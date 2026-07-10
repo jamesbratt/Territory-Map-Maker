@@ -2,32 +2,12 @@ import { Request, Response } from "express";
 import fs from "fs/promises";
 import { AppDataSource } from "../database/data-source";
 import { PostcodeLookup } from "../database/entities/Postcodelookup";
-import { PopulationByAgeBand } from "../database/entities/PopulationByAgeBand";
-
-const VALID_AGE_RANGES = [
-  "under_18",
-  "age_18_24",
-  "age_25_34",
-  "age_35_44",
-  "age_45_54",
-  "age_55_64",
-  "age_65_74",
-  "age_75_plus",
-] as const;
-
-type AgeRange = (typeof VALID_AGE_RANGES)[number];
-
-// Map from CSV/request column names to TypeScript property names
-const AGE_RANGE_PROPERTY_MAP: Record<AgeRange, keyof PopulationByAgeBand> = {
-  under_18: "under18",
-  age_18_24: "age1824",
-  age_25_34: "age2534",
-  age_35_44: "age3544",
-  age_45_54: "age4554",
-  age_55_64: "age5564",
-  age_65_74: "age6574",
-  age_75_plus: "age75Plus",
-};
+import {
+  CENSUS_VARIABLES,
+  VALID_CENSUS_VARIABLES,
+  calculatePercentile,
+  getRankString,
+} from "../services/census.config";
 
 const parseCsvLine = (line: string): string[] => {
   const values: string[] = [];
@@ -69,7 +49,7 @@ export class UploadController {
       return;
     }
 
-    const { postcode: postcodeColumn, ageRange } = req.body;
+    const { postcode: postcodeColumn, censusVariables } = req.body;
     if (typeof postcodeColumn !== "string" || postcodeColumn.trim() === "") {
       res.status(400).json({
         message: "Request body must include postcode column header mapping",
@@ -79,12 +59,25 @@ export class UploadController {
     }
 
     if (
-      !ageRange ||
-      typeof ageRange !== "string" ||
-      !VALID_AGE_RANGES.includes(ageRange as AgeRange)
+      !censusVariables ||
+      !Array.isArray(censusVariables) ||
+      censusVariables.length === 0
     ) {
       res.status(400).json({
-        message: `ageRange must be one of: ${VALID_AGE_RANGES.join(", ")}`,
+        message: "censusVariables must be a non-empty array",
+      });
+      await fs.rm(file.path, { force: true });
+      return;
+    }
+
+    // Validate all requested census variables
+    const invalidVariables = censusVariables.filter(
+      (v: unknown) =>
+        typeof v !== "string" || !VALID_CENSUS_VARIABLES.includes(v),
+    );
+    if (invalidVariables.length > 0) {
+      res.status(400).json({
+        message: `Invalid census variables: ${invalidVariables.join(", ")}. Valid options: ${VALID_CENSUS_VARIABLES.join(", ")}`,
       });
       await fs.rm(file.path, { force: true });
       return;
@@ -160,74 +153,72 @@ export class UploadController {
         ),
       ] as string[];
 
-      // Fetch population data for age range
-      const populationRepository =
-        AppDataSource.getRepository(PopulationByAgeBand);
-      const ageRangeProperty = AGE_RANGE_PROPERTY_MAP[ageRange as AgeRange];
+      // Fetch data for all requested census variables
+      const censusDataByVariable: Record<
+        string,
+        { data: Map<string, number>; allValues: number[] }
+      > = {};
 
-      const populationData = await populationRepository.find({
-        where: uniqueLSOAs.map((lsoa) => ({ geographyCode: lsoa })),
-        select: ["geographyCode", ageRangeProperty],
-      });
+      for (const variableKey of censusVariables) {
+        const config = CENSUS_VARIABLES[variableKey];
+        const repository = AppDataSource.getRepository(config.entity);
 
-      // Fetch ALL population data for the age range to calculate percentiles
-      const allPopulationData = await populationRepository.find({
-        select: [ageRangeProperty],
-      });
+        // Fetch population data for this variable
+        const variableData = await repository.find({
+          where: uniqueLSOAs.map((lsoa) => ({ geographyCode: lsoa })),
+          select: ["geographyCode", config.columnProperty],
+        });
 
-      // Extract all age values and sort them
-      const allAgeValues = allPopulationData
-        .map((p) => p[ageRangeProperty] as number)
-        .filter((v) => v !== null && v !== undefined)
-        .sort((a, b) => a - b);
+        // Fetch ALL population data for this variable to calculate percentiles
+        const allVariableData = await repository.find({
+          select: [config.columnProperty],
+        });
 
-      // Function to calculate percentile
-      const calculatePercentile = (value: number | null): number | null => {
-        if (value === null || value === undefined) {
-          return null;
-        }
-        const countBelow = allAgeValues.filter((v) => v < value).length;
-        return Math.round((countBelow / allAgeValues.length) * 100);
-      };
+        // Extract all values and sort them
+        const allValues = allVariableData
+          .map((p) => p[config.columnProperty] as number)
+          .filter((v) => v !== null && v !== undefined)
+          .sort((a, b) => a - b);
 
-      // Function to get rank string
-      const getRankString = (percentile: number | null): string | null => {
-        if (percentile === null) {
-          return null;
-        }
-        if (percentile >= 90) return "top 10%";
-        if (percentile >= 80) return "top 20%";
-        if (percentile >= 70) return "top 30%";
-        if (percentile >= 60) return "top 40%";
-        if (percentile >= 50) return "top 50%";
-        if (percentile >= 40) return "40-50%";
-        if (percentile >= 30) return "30-40%";
-        if (percentile >= 20) return "20-30%";
-        if (percentile >= 10) return "10-20%";
-        return "bottom 10%";
-      };
+        // Store for later use
+        censusDataByVariable[variableKey] = {
+          data: new Map(
+            variableData.map((p) => [
+              p.geographyCode,
+              p[config.columnProperty] as number,
+            ]),
+          ),
+          allValues,
+        };
+      }
 
-      // Create LSOA to population data lookup map
-      const populationMap = new Map(
-        populationData.map((p) => [p.geographyCode, p[ageRangeProperty]]),
-      );
-
-      // Enrich rows with LSOA ID, age data, percentile, and rank
+      // Enrich rows with LSOA ID and all census variables
       const enrichedRows = rows.map((row) => {
         const cleanPostcode = row.postcode.replace(/\s+/g, "");
         const lsoaId = lsoaMap.get(cleanPostcode);
-        const ageValue = lsoaId ? populationMap.get(lsoaId) || null : null;
-        const percentile = calculatePercentile(ageValue as number | null);
-        const rank = getRankString(percentile);
 
-        return {
+        const enrichedRow: Record<string, any> = {
           ...row.data,
           postcode: row.postcode,
           lsoa_id: lsoaId || null,
-          [ageRange]: ageValue,
-          [`${ageRange}_percentile`]: percentile,
-          [`${ageRange}_rank`]: rank,
         };
+
+        // Add data for each requested census variable
+        for (const variableKey of censusVariables) {
+          const { data, allValues } = censusDataByVariable[variableKey];
+          const value = lsoaId ? data.get(lsoaId) || null : null;
+          const percentile = calculatePercentile(
+            value as number | null,
+            allValues,
+          );
+          const rank = getRankString(percentile);
+
+          enrichedRow[variableKey] = value;
+          enrichedRow[`${variableKey}_percentile`] = percentile;
+          enrichedRow[`${variableKey}_rank`] = rank;
+        }
+
+        return enrichedRow;
       });
 
       res.status(200).json(enrichedRows);
