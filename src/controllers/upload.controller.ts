@@ -206,7 +206,7 @@ export class UploadController {
         // Add data for each requested census variable
         for (const variableKey of censusVariables) {
           const { data, allValues } = censusDataByVariable[variableKey];
-          const value = lsoaId ? data.get(lsoaId) || null : null;
+          const value = lsoaId ? (data.get(lsoaId) ?? null) : null;
           const percentile = calculatePercentile(
             value as number | null,
             allValues,

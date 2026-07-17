@@ -4,6 +4,14 @@ import { DataSource } from "typeorm";
 import { PopulationByAgeBand } from "./entities/PopulationByAgeBand";
 import { PostcodeLookup } from "./entities/Postcodelookup";
 import { OccupationByCategory } from "./entities/OccupationByCategory";
+import { HouseholdComposition } from "./entities/HouseholdComposition";
+import { CarVanAvailability } from "./entities/CarVanAvailability";
+import { NsSecClassification } from "./entities/NsSecClassification";
+import { HouseholdSize } from "./entities/HouseholdSize";
+import { HouseholdTenure } from "./entities/HouseholdTenure";
+import { EconomicActivity } from "./entities/EconomicActivity";
+import { AccommodationType } from "./entities/AccommodationType";
+import { QualificationLevel } from "./entities/QualificationLevel";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -12,7 +20,19 @@ export const AppDataSource = new DataSource({
   username: env.dbUsername,
   password: env.dbPassword,
   database: env.dbName,
-  entities: [PopulationByAgeBand, PostcodeLookup, OccupationByCategory],
+  entities: [
+    PopulationByAgeBand,
+    PostcodeLookup,
+    OccupationByCategory,
+    HouseholdComposition,
+    CarVanAvailability,
+    NsSecClassification,
+    HouseholdSize,
+    HouseholdTenure,
+    EconomicActivity,
+    AccommodationType,
+    QualificationLevel,
+  ],
   synchronize: false,
   migrations: ["dist/database/migrations/*.js"],
   logging: false,
