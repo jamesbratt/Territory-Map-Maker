@@ -124,6 +124,7 @@ export default function App() {
     const fields = new Set(uploadRows.flatMap((row) => Object.keys(row)));
     fields.delete("segment_affinity_rank");
     fields.delete("segment_affinity_score");
+    fields.delete("censusValues");
 
     return [
       "segment_affinity_rank",

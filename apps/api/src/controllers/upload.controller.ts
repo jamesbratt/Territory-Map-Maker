@@ -207,9 +207,11 @@ export class UploadController {
           lsoa_id: lsoaId || null,
         };
 
-        // Add data for each requested census variable
         const percentiles: number[] = [];
+        const censusValues: Record<string, number | string | null>[] = [];
+
         for (const variableKey of censusVariables) {
+          const config = CENSUS_VARIABLES[variableKey];
           const { data, allValues } = censusDataByVariable[variableKey];
           const value = lsoaId ? (data.get(lsoaId) ?? null) : null;
           const percentile = calculatePercentile(
@@ -218,9 +220,12 @@ export class UploadController {
           );
           const rank = getRankString(percentile);
 
-          enrichedRow[variableKey] = value;
-          enrichedRow[`${variableKey}_percentile`] = percentile;
-          enrichedRow[`${variableKey}_rank`] = rank;
+          censusValues.push({
+            [variableKey]: value,
+            [`${variableKey}_affinity`]: percentile,
+            [`${variableKey}_rank`]: rank,
+            [`${variableKey}_friendly_label`]: config.displayName,
+          });
 
           if (percentile !== null) {
             percentiles.push(percentile);
@@ -235,6 +240,7 @@ export class UploadController {
               )
             : null;
 
+        enrichedRow.censusValues = censusValues;
         enrichedRow.segment_affinity_score = segmentAffinityScore;
         enrichedRow.segment_affinity_rank = getRankString(segmentAffinityScore);
 
