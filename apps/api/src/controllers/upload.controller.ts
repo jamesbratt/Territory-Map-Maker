@@ -162,6 +162,7 @@ export class UploadController {
         string,
         { data: Map<string, number>; allValues: number[] }
       > = {};
+      const geographyByCode = new Map<string, string>();
 
       for (const variableKey of censusVariables) {
         const config = CENSUS_VARIABLES[variableKey];
@@ -170,8 +171,17 @@ export class UploadController {
         // Fetch population data for this variable
         const variableData = await repository.find({
           where: uniqueLSOAs.map((lsoa) => ({ geographyCode: lsoa })),
-          select: ["geographyCode", config.columnProperty],
+          select: ["geography", "geographyCode", config.columnProperty],
         });
+
+        for (const censusRow of variableData) {
+          if (
+            typeof censusRow.geographyCode === "string" &&
+            typeof censusRow.geography === "string"
+          ) {
+            geographyByCode.set(censusRow.geographyCode, censusRow.geography);
+          }
+        }
 
         // Fetch ALL population data for this variable to calculate percentiles
         const allVariableData = await repository.find({
@@ -205,6 +215,8 @@ export class UploadController {
           ...row.data,
           postcode: row.postcode,
           lsoa_id: lsoaId || null,
+          geography: lsoaId ? (geographyByCode.get(lsoaId) ?? null) : null,
+          geography_code: lsoaId || null,
         };
 
         const percentiles: number[] = [];

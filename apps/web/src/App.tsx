@@ -1,4 +1,8 @@
-import { ArrowForwardIcon, AtSignIcon } from "@chakra-ui/icons";
+import {
+  ArrowForwardIcon,
+  AtSignIcon,
+  DownloadIcon,
+} from "@chakra-ui/icons";
 import {
   Alert,
   AlertDescription,
@@ -22,6 +26,7 @@ import {
   ModalHeader,
   ModalOverlay,
   Progress,
+  Select,
   SimpleGrid,
   Stack,
   Table,
@@ -39,6 +44,18 @@ import { ApiStatus } from "./components/ApiStatus";
 import { uploadCsv } from "./lib/api";
 
 const RESULTS_PER_PAGE = 10;
+const SEGMENT_RANK_ORDER = [
+  "top 10%",
+  "top 20%",
+  "top 30%",
+  "top 40%",
+  "top 50%",
+  "40-50%",
+  "30-40%",
+  "20-30%",
+  "10-20%",
+  "bottom 10%",
+];
 
 function getAffinityColor(score: number): string {
   if (score >= 80) return "green";
@@ -46,6 +63,18 @@ function getAffinityColor(score: number): string {
   if (score >= 40) return "blue";
   if (score >= 20) return "orange";
   return "red";
+}
+
+function formatCsvCell(value: unknown): string {
+  const serialized =
+    value === null || value === undefined
+      ? ""
+      : typeof value === "object"
+        ? JSON.stringify(value)
+        : String(value);
+  const safeValue = /^[=+\-@]/.test(serialized) ? `'${serialized}` : serialized;
+
+  return `"${safeValue.replaceAll('"', '""')}"`;
 }
 
 function getCensusDetails(row: Record<string, unknown>) {
@@ -155,6 +184,10 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadRows, setUploadRows] = useState<Record<string, unknown>[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<"none" | "ascending" | "descending">(
+    "none",
+  );
+  const [rankFilter, setRankFilter] = useState("all");
   const [selectedResultRow, setSelectedResultRow] =
     useState<Record<string, unknown> | null>(null);
   const [uploadResult, setUploadResult] = useState<{
@@ -167,6 +200,10 @@ export default function App() {
     fields.delete("segment_affinity_rank");
     fields.delete("segment_affinity_score");
     fields.delete("censusValues");
+    fields.delete("lsoa_id");
+    fields.delete("geography");
+    fields.delete("geography_code");
+    fields.delete("postcode");
 
     return [
       "segment_affinity_rank",
@@ -175,11 +212,64 @@ export default function App() {
     ];
   }, [uploadRows]);
 
-  const totalPages = Math.ceil(uploadRows.length / RESULTS_PER_PAGE);
+  const rankOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          uploadRows
+            .map((row) => row.segment_affinity_rank)
+            .filter(
+              (rank): rank is string =>
+                typeof rank === "string" && rank.length > 0,
+          ),
+        ),
+      ].sort((first, second) => {
+        const firstIndex = SEGMENT_RANK_ORDER.indexOf(first.toLowerCase());
+        const secondIndex = SEGMENT_RANK_ORDER.indexOf(second.toLowerCase());
+
+        if (firstIndex === -1 && secondIndex === -1) {
+          return first.localeCompare(second);
+        }
+        if (firstIndex === -1) return 1;
+        if (secondIndex === -1) return -1;
+        return firstIndex - secondIndex;
+      }),
+    [uploadRows],
+  );
+  const filteredRows = useMemo(
+    () =>
+      rankFilter === "all"
+        ? uploadRows
+        : uploadRows.filter(
+            (row) => String(row.segment_affinity_rank) === rankFilter,
+          ),
+    [rankFilter, uploadRows],
+  );
+  const totalPages = Math.ceil(filteredRows.length / RESULTS_PER_PAGE);
   const pageStart = (currentPage - 1) * RESULTS_PER_PAGE;
+  const sortedRows = useMemo(() => {
+    if (sortOrder === "none") return filteredRows;
+
+    return [...filteredRows].sort((first, second) => {
+      const firstValue = first.segment_affinity_score;
+      const secondValue = second.segment_affinity_score;
+      const firstScore = firstValue == null ? Number.NaN : Number(firstValue);
+      const secondScore = secondValue == null ? Number.NaN : Number(secondValue);
+      const firstHasScore = Number.isFinite(firstScore);
+      const secondHasScore = Number.isFinite(secondScore);
+
+      if (!firstHasScore && !secondHasScore) return 0;
+      if (!firstHasScore) return 1;
+      if (!secondHasScore) return -1;
+
+      return sortOrder === "ascending"
+        ? firstScore - secondScore
+        : secondScore - firstScore;
+    });
+  }, [filteredRows, sortOrder]);
   const pagedRows = useMemo(
-    () => uploadRows.slice(pageStart, pageStart + RESULTS_PER_PAGE),
-    [pageStart, uploadRows],
+    () => sortedRows.slice(pageStart, pageStart + RESULTS_PER_PAGE),
+    [pageStart, sortedRows],
   );
   const selectedCensusDetails = useMemo(
     () => getCensusDetails(selectedResultRow ?? {}),
@@ -192,6 +282,31 @@ export default function App() {
   const selectedAffinityColor = selectedHasScore
     ? getAffinityColor(selectedScore)
     : "gray";
+
+  const openResultDetails = (row: Record<string, unknown>) => {
+    setSelectedResultRow(row);
+    detailModal.onOpen();
+  };
+
+  const exportVisibleRows = () => {
+    if (sortedRows.length === 0) return;
+
+    const csv = [
+      resultColumns.map(formatCsvCell).join(","),
+      ...sortedRows.map((row) =>
+        resultColumns.map((column) => formatCsvCell(row[column])).join(","),
+      ),
+    ].join("\r\n");
+    const blob = new Blob([`\uFEFF${csv}`], {
+      type: "text/csv;charset=utf-8",
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "segment-results.csv";
+    link.click();
+    URL.revokeObjectURL(downloadUrl);
+  };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -231,6 +346,7 @@ export default function App() {
       });
       setUploadRows(rows);
       setCurrentPage(1);
+      setRankFilter("all");
       setSelectedResultRow(null);
       setPendingFile(null);
       setSelectedPersonaId(null);
@@ -347,16 +463,79 @@ export default function App() {
               align={{ base: "start", sm: "end" }}
               justify="space-between"
               mb={4}
-              direction={{ base: "column", sm: "row" }}
+              direction={{ base: "column", lg: "row" }}
               gap={2}
             >
               <Box>
                 <Heading fontSize="2xl">Audience results</Heading>
                 <Text color="gray.600" mt={1}>
-                  {uploadRows.length} enriched{" "}
-                  {uploadRows.length === 1 ? "record" : "records"}
+                  {rankFilter === "all"
+                    ? `${uploadRows.length} enriched ${
+                        uploadRows.length === 1 ? "record" : "records"
+                      }`
+                    : `${filteredRows.length} of ${uploadRows.length} records`}
                 </Text>
               </Box>
+              <Stack
+                direction={{ base: "column", md: "row" }}
+                spacing={3}
+                w={{ base: "full", lg: "auto" }}
+              >
+                <FormControl minW={{ sm: "190px" }}>
+                  <FormLabel fontSize="sm" mb={1}>
+                    Filter by rank
+                  </FormLabel>
+                  <Select
+                    bg="white"
+                    onChange={(event) => {
+                      setRankFilter(event.target.value);
+                      setCurrentPage(1);
+                    }}
+                    value={rankFilter}
+                  >
+                    <option value="all">All ranks</option>
+                    {rankOptions.map((rank) => (
+                      <option key={rank} value={rank}>
+                        {rank}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl minW={{ sm: "250px" }}>
+                  <FormLabel fontSize="sm" mb={1}>
+                    Sort results
+                  </FormLabel>
+                  <Select
+                    bg="white"
+                    onChange={(event) => {
+                      setSortOrder(
+                        event.target.value as
+                          | "none"
+                          | "ascending"
+                          | "descending",
+                      );
+                      setCurrentPage(1);
+                    }}
+                    value={sortOrder}
+                  >
+                    <option value="none">No sorting</option>
+                    <option value="ascending">Affinity score: low to high</option>
+                    <option value="descending">Affinity score: high to low</option>
+                  </Select>
+                </FormControl>
+                <Button
+                  alignSelf="end"
+                  colorScheme="brand"
+                  flexShrink={0}
+                  isDisabled={sortedRows.length === 0}
+                  leftIcon={<DownloadIcon />}
+                  onClick={exportVisibleRows}
+                  w={{ base: "full", md: "auto" }}
+                  whiteSpace="nowrap"
+                >
+                  Export CSV
+                </Button>
+              </Stack>
             </Flex>
 
             <TableContainer
@@ -376,6 +555,15 @@ export default function App() {
                   </Tr>
                 </Thead>
                 <Tbody>
+                  {pagedRows.length === 0 && (
+                    <Tr>
+                      <Td colSpan={resultColumns.length} py={10} textAlign="center">
+                        <Text color="gray.600">
+                          No results match the selected segment rank.
+                        </Text>
+                      </Td>
+                    </Tr>
+                  )}
                   {pagedRows.map((row, rowIndex) => {
                     const absoluteIndex = pageStart + rowIndex;
 
@@ -383,16 +571,17 @@ export default function App() {
                       <Tr
                         cursor="pointer"
                         key={absoluteIndex}
-                        onClick={() => {
-                          setSelectedResultRow(row);
-                          detailModal.onOpen();
-                        }}
+                        onClick={() => openResultDetails(row)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            setSelectedResultRow(row);
-                            detailModal.onOpen();
+                            openResultDetails(row);
                           }
+                        }}
+                        sx={{
+                          "&:hover .row-details-action": {
+                            opacity: 1,
+                          },
                         }}
                         tabIndex={0}
                         _hover={{ bg: "gray.50" }}
@@ -418,18 +607,38 @@ export default function App() {
                                 : String(value);
 
                           return (
-                            <Td key={column} maxW="280px" py={3}>
-                              {column === "segment_affinity_rank" ? (
-                                <Badge
-                                  colorScheme={affinityColor}
-                                  px={2.5}
-                                  py={1}
-                                  rounded="full"
-                                  textTransform="capitalize"
-                                  whiteSpace="nowrap"
-                                >
-                                  {displayValue}
-                                </Badge>
+                              <Td key={column} maxW="280px" py={3}>
+                                {column === "segment_affinity_rank" ? (
+                                  <HStack minW="180px" spacing={2}>
+                                    <Badge
+                                      colorScheme={affinityColor}
+                                      px={2.5}
+                                      py={1}
+                                      rounded="full"
+                                      textTransform="capitalize"
+                                      whiteSpace="nowrap"
+                                    >
+                                      {displayValue}
+                                    </Badge>
+                                    <Button
+                                      className="row-details-action"
+                                      colorScheme="brand"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        openResultDetails(row);
+                                      }}
+                                      opacity={{ base: 1, md: 0 }}
+                                      size="xs"
+                                      transition="opacity 0.15s ease"
+                                      whiteSpace="nowrap"
+                                      _focusVisible={{
+                                        opacity: 1,
+                                        boxShadow: "outline",
+                                      }}
+                                    >
+                                      View details
+                                    </Button>
+                                  </HStack>
                               ) : column === "segment_affinity_score" && hasScore ? (
                                 <HStack minW="150px" spacing={3}>
                                   <Progress
@@ -468,40 +677,42 @@ export default function App() {
               </Table>
             </TableContainer>
 
-            <Flex
-              align="center"
-              justify="space-between"
-              mt={4}
-              direction={{ base: "column", sm: "row" }}
-              gap={3}
-            >
-              <Text color="gray.600" fontSize="sm">
-                Showing {pageStart + 1}–
-                {Math.min(pageStart + RESULTS_PER_PAGE, uploadRows.length)} of{" "}
-                {uploadRows.length}
-              </Text>
-              <HStack>
-                <Button
-                  isDisabled={currentPage === 1}
-                  onClick={() => setCurrentPage((page) => page - 1)}
-                  size="sm"
-                  variant="outline"
-                >
-                  Previous
-                </Button>
-                <Text fontSize="sm" minW="100px" textAlign="center">
-                  Page {currentPage} of {totalPages}
+            {filteredRows.length > 0 && (
+              <Flex
+                align="center"
+                justify="space-between"
+                mt={4}
+                direction={{ base: "column", sm: "row" }}
+                gap={3}
+              >
+                <Text color="gray.600" fontSize="sm">
+                  Showing {pageStart + 1}–
+                  {Math.min(pageStart + RESULTS_PER_PAGE, filteredRows.length)} of{" "}
+                  {filteredRows.length}
                 </Text>
-                <Button
-                  isDisabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((page) => page + 1)}
-                  size="sm"
-                  variant="outline"
-                >
-                  Next
-                </Button>
-              </HStack>
-            </Flex>
+                <HStack>
+                  <Button
+                    isDisabled={currentPage === 1}
+                    onClick={() => setCurrentPage((page) => page - 1)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Previous
+                  </Button>
+                  <Text fontSize="sm" minW="100px" textAlign="center">
+                    Page {currentPage} of {totalPages}
+                  </Text>
+                  <Button
+                    isDisabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((page) => page + 1)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    Next
+                  </Button>
+                </HStack>
+              </Flex>
+            )}
           </Box>
         )}
 
@@ -563,9 +774,14 @@ export default function App() {
               </Flex>
               <Text color="whiteAlpha.800" fontSize="sm" mt={4} maxW="2xl">
                 The overall score is the average of the available census-signal
-                percentiles below. A higher score means this area has a stronger
-                concentration of traits associated with the selected persona
-                compared with other areas in the dataset.
+                percentiles below. A higher score means{" "}
+                <Text as="span" color="white" fontWeight="semibold">
+                  {selectedResultRow?.geography == null
+                    ? "this area"
+                    : String(selectedResultRow.geography)}
+                </Text>{" "}
+                has a stronger concentration of traits associated with the
+                selected persona compared with other areas in the dataset.
               </Text>
             </Box>
 
