@@ -49,7 +49,11 @@ export class UploadController {
       return;
     }
 
-    const { postcode: postcodeColumn, censusVariables } = req.body;
+    const { postcode: postcodeColumn } = req.body;
+    const censusVariables =
+      typeof req.body.censusVariables === "string"
+        ? [req.body.censusVariables]
+        : req.body.censusVariables;
     if (typeof postcodeColumn !== "string" || postcodeColumn.trim() === "") {
       res.status(400).json({
         message: "Request body must include postcode column header mapping",

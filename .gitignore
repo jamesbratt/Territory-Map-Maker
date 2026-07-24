@@ -1,7 +1,14 @@
 node_modules
 npm-debug.log
 dist
+apps/*/dist
+*.tsbuildinfo
+apps/web/vite.config.js
+apps/web/vite.config.d.ts
 .env
+.env.local
 .vscode
 census_data
+uploads/*
+!uploads/.gitkeep
 

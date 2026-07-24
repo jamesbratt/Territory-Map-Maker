@@ -1,34 +1,24 @@
 {
-  "name": "segment-core-api",
+  "name": "segment-mvp",
   "version": "1.0.0",
   "private": true,
-  "description": "Express REST API in TypeScript with TypeORM, PostgreSQL, and PostGIS",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only --inspect=9229 src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
-    "migration:generate": "npm run typeorm -- migration:generate src/database/migrations/Init",
-    "migration:run": "npm run typeorm -- migration:run",
-    "migration:revert": "npm run typeorm -- migration:revert"
-  },
-  "dependencies": {
-    "csv-parser": "^3.2.1",
-    "csv-writer": "^1.6.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "multer": "^1.4.5-lts.2",
-    "pg": "^8.12.0",
-    "reflect-metadata": "^0.2.2",
-    "typeorm": "^0.3.20"
+    "dev": "concurrently --kill-others-on-fail --names api,web --prefix-colors blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "npm run dev --workspace @segment/api",
+    "dev:web": "npm run dev --workspace @segment/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "start": "npm run start --workspace @segment/api",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "migration:generate": "npm run migration:generate --workspace @segment/api",
+    "migration:run": "npm run migration:run --workspace @segment/api",
+    "migration:revert": "npm run migration:revert --workspace @segment/api"
   },
   "devDependencies": {
-    "@types/express": "^5.0.0",
-    "@types/multer": "^2.1.0",
-    "@types/node": "^22.10.1",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "typeorm-ts-node-commonjs": "^0.3.20",
-    "typescript": "^5.7.2"
+    "concurrently": "^9.2.0"
   }
 }

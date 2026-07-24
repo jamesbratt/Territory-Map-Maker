@@ -5,7 +5,7 @@ import { Router } from "express";
 import { UploadController } from "../controllers/upload.controller";
 
 const router = Router();
-const uploadDir = path.resolve(__dirname, "../../uploads");
+const uploadDir = path.resolve(process.cwd(), "../../uploads");
 fs.mkdirSync(uploadDir, { recursive: true });
 
 const csvUpload = multer({
