@@ -225,6 +225,7 @@ export class UploadController {
             [`${variableKey}_affinity`]: percentile,
             [`${variableKey}_rank`]: rank,
             [`${variableKey}_friendly_label`]: config.displayName,
+            [`${variableKey}_category_name`]: config.categoryName,
           });
 
           if (percentile !== null) {

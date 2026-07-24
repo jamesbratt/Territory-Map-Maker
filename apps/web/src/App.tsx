@@ -48,6 +48,45 @@ function getAffinityColor(score: number): string {
   return "red";
 }
 
+function getCensusDetails(row: Record<string, unknown>) {
+  if (!Array.isArray(row.censusValues)) return [];
+
+  return row.censusValues
+    .filter(
+      (entry): entry is Record<string, unknown> =>
+        typeof entry === "object" && entry !== null,
+    )
+    .map((entry) => {
+      const friendlyLabelEntry = Object.entries(entry).find(([key]) =>
+        key.endsWith("_friendly_label"),
+      );
+      const affinityEntry = Object.entries(entry).find(([key]) =>
+        key.endsWith("_affinity"),
+      );
+      const rankEntry = Object.entries(entry).find(([key]) =>
+        key.endsWith("_rank"),
+      );
+      const categoryEntry = Object.entries(entry).find(([key]) =>
+        key.endsWith("_category_name"),
+      );
+      const valueEntry = Object.entries(entry).find(
+        ([key]) =>
+          !key.endsWith("_friendly_label") &&
+          !key.endsWith("_category_name") &&
+          !key.endsWith("_affinity") &&
+          !key.endsWith("_rank"),
+      );
+
+      return {
+        label: String(friendlyLabelEntry?.[1] ?? valueEntry?.[0] ?? "Census value"),
+        value: valueEntry?.[1],
+        affinity: affinityEntry?.[1],
+        rank: rankEntry?.[1],
+        category: categoryEntry?.[1],
+      };
+    });
+}
+
 const personas = [
   {
     id: "young-professionals",
@@ -109,12 +148,15 @@ const personas = [
 export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const personaModal = useDisclosure();
+  const detailModal = useDisclosure();
   const [postcodeColumn, setPostcodeColumn] = useState("postcode");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadRows, setUploadRows] = useState<Record<string, unknown>[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedResultRow, setSelectedResultRow] =
+    useState<Record<string, unknown> | null>(null);
   const [uploadResult, setUploadResult] = useState<{
     status: "success" | "error";
     message: string;
@@ -139,6 +181,17 @@ export default function App() {
     () => uploadRows.slice(pageStart, pageStart + RESULTS_PER_PAGE),
     [pageStart, uploadRows],
   );
+  const selectedCensusDetails = useMemo(
+    () => getCensusDetails(selectedResultRow ?? {}),
+    [selectedResultRow],
+  );
+  const selectedScoreValue = selectedResultRow?.segment_affinity_score;
+  const selectedScore =
+    selectedScoreValue == null ? Number.NaN : Number(selectedScoreValue);
+  const selectedHasScore = Number.isFinite(selectedScore);
+  const selectedAffinityColor = selectedHasScore
+    ? getAffinityColor(selectedScore)
+    : "gray";
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -178,6 +231,7 @@ export default function App() {
       });
       setUploadRows(rows);
       setCurrentPage(1);
+      setSelectedResultRow(null);
       setPendingFile(null);
       setSelectedPersonaId(null);
       personaModal.onClose();
@@ -322,66 +376,94 @@ export default function App() {
                   </Tr>
                 </Thead>
                 <Tbody>
-                  {pagedRows.map((row, rowIndex) => (
-                    <Tr key={pageStart + rowIndex}>
-                      {resultColumns.map((column) => {
-                        const value = row[column];
-                        const rawScore = row.segment_affinity_score;
-                        const score =
-                          rawScore == null ? Number.NaN : Number(rawScore);
-                        const hasScore = Number.isFinite(score);
-                        const affinityColor = hasScore
-                          ? getAffinityColor(score)
-                          : "gray";
-                        const displayValue =
-                          value === null || value === undefined || value === ""
-                            ? "—"
-                            : typeof value === "object"
-                              ? JSON.stringify(value)
-                              : String(value);
+                  {pagedRows.map((row, rowIndex) => {
+                    const absoluteIndex = pageStart + rowIndex;
 
-                        return (
-                          <Td key={column} maxW="280px" py={3}>
-                            {column === "segment_affinity_rank" ? (
-                              <Badge
-                                colorScheme={affinityColor}
-                                px={2.5}
-                                py={1}
-                                rounded="full"
-                                textTransform="capitalize"
-                                whiteSpace="nowrap"
-                              >
-                                {displayValue}
-                              </Badge>
-                            ) : column === "segment_affinity_score" && hasScore ? (
-                              <HStack minW="150px" spacing={3}>
-                                <Progress
+                    return (
+                      <Tr
+                        cursor="pointer"
+                        key={absoluteIndex}
+                        onClick={() => {
+                          setSelectedResultRow(row);
+                          detailModal.onOpen();
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedResultRow(row);
+                            detailModal.onOpen();
+                          }
+                        }}
+                        tabIndex={0}
+                        _hover={{ bg: "gray.50" }}
+                        _focusVisible={{
+                          outline: "2px solid",
+                          outlineColor: "brand.500",
+                        }}
+                      >
+                        {resultColumns.map((column) => {
+                          const value = row[column];
+                          const rawScore = row.segment_affinity_score;
+                          const score =
+                            rawScore == null ? Number.NaN : Number(rawScore);
+                          const hasScore = Number.isFinite(score);
+                          const affinityColor = hasScore
+                            ? getAffinityColor(score)
+                            : "gray";
+                          const displayValue =
+                            value === null || value === undefined || value === ""
+                              ? "—"
+                              : typeof value === "object"
+                                ? JSON.stringify(value)
+                                : String(value);
+
+                          return (
+                            <Td key={column} maxW="280px" py={3}>
+                              {column === "segment_affinity_rank" ? (
+                                <Badge
                                   colorScheme={affinityColor}
-                                  flex="1"
-                                  max={100}
-                                  minW="90px"
+                                  px={2.5}
+                                  py={1}
                                   rounded="full"
-                                  size="sm"
-                                  value={Math.max(0, Math.min(100, score))}
-                                />
-                                <Text fontWeight="semibold" minW="28px" textAlign="right">
+                                  textTransform="capitalize"
+                                  whiteSpace="nowrap"
+                                >
+                                  {displayValue}
+                                </Badge>
+                              ) : column === "segment_affinity_score" && hasScore ? (
+                                <HStack minW="150px" spacing={3}>
+                                  <Progress
+                                    colorScheme={affinityColor}
+                                    flex="1"
+                                    max={100}
+                                    minW="90px"
+                                    rounded="full"
+                                    size="sm"
+                                    value={Math.max(0, Math.min(100, score))}
+                                  />
+                                  <Text
+                                    fontWeight="semibold"
+                                    minW="28px"
+                                    textAlign="right"
+                                  >
+                                    {displayValue}
+                                  </Text>
+                                </HStack>
+                              ) : (
+                                <Text
+                                  overflow="hidden"
+                                  textOverflow="ellipsis"
+                                  whiteSpace="nowrap"
+                                >
                                   {displayValue}
                                 </Text>
-                              </HStack>
-                            ) : (
-                              <Text
-                                overflow="hidden"
-                                textOverflow="ellipsis"
-                                whiteSpace="nowrap"
-                              >
-                                {displayValue}
-                              </Text>
-                            )}
-                          </Td>
-                        );
-                      })}
-                    </Tr>
-                  ))}
+                              )}
+                            </Td>
+                          );
+                        })}
+                      </Tr>
+                    );
+                  })}
                 </Tbody>
               </Table>
             </TableContainer>
@@ -424,6 +506,155 @@ export default function App() {
         )}
 
       </Container>
+
+      <Modal
+        isCentered
+        isOpen={detailModal.isOpen}
+        onClose={() => {
+          detailModal.onClose();
+          setSelectedResultRow(null);
+        }}
+        size="3xl"
+      >
+        <ModalOverlay />
+        <ModalContent mx={4}>
+          <ModalHeader pb={2}>What drives this audience affinity?</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Box bg="gray.900" color="white" mb={5} p={5} rounded="xl">
+              <Flex
+                align={{ base: "start", sm: "center" }}
+                direction={{ base: "column", sm: "row" }}
+                gap={5}
+                justify="space-between"
+              >
+                <Box>
+                  <Text color="whiteAlpha.700" fontSize="sm">
+                    Overall segment affinity
+                  </Text>
+                  <HStack mt={2} spacing={3}>
+                    <Heading fontSize="3xl">
+                      {selectedHasScore ? `${selectedScore}/100` : "Not available"}
+                    </Heading>
+                    <Badge
+                      colorScheme={selectedAffinityColor}
+                      px={2.5}
+                      py={1}
+                      rounded="full"
+                      textTransform="capitalize"
+                    >
+                      {selectedResultRow?.segment_affinity_rank == null
+                        ? "No rank"
+                        : String(selectedResultRow.segment_affinity_rank)}
+                    </Badge>
+                  </HStack>
+                </Box>
+                {selectedHasScore && (
+                  <Progress
+                    bg="whiteAlpha.300"
+                    colorScheme={selectedAffinityColor}
+                    max={100}
+                    minW={{ base: "100%", sm: "220px" }}
+                    rounded="full"
+                    size="sm"
+                    value={Math.max(0, Math.min(100, selectedScore))}
+                  />
+                )}
+              </Flex>
+              <Text color="whiteAlpha.800" fontSize="sm" mt={4} maxW="2xl">
+                The overall score is the average of the available census-signal
+                percentiles below. A higher score means this area has a stronger
+                concentration of traits associated with the selected persona
+                compared with other areas in the dataset.
+              </Text>
+            </Box>
+
+            <Text color="gray.600" fontSize="sm" mb={4}>
+              Each available signal contributes equally. The census count is
+              converted into a percentile from 0 to 100, while the rank describes
+              how that percentile compares with the rest of the dataset.
+            </Text>
+
+            {selectedCensusDetails.length > 0 ? (
+              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
+                {selectedCensusDetails.map(
+                  (detail, detailIndex) => (
+                    <Box
+                      bg="gray.50"
+                      borderWidth="1px"
+                      key={`${detail.label}-${detailIndex}`}
+                      p={5}
+                      rounded="lg"
+                    >
+                      <Text
+                        color="gray.500"
+                        fontSize="xs"
+                        fontWeight="semibold"
+                        letterSpacing="0.04em"
+                        textTransform="uppercase"
+                      >
+                        {detail.category == null
+                          ? "Census signal"
+                          : String(detail.category)}
+                      </Text>
+                      <Text color="brand.700" fontWeight="bold">
+                        {detail.label}
+                      </Text>
+                      <SimpleGrid columns={3} mt={4} spacing={3}>
+                        <Box>
+                          <Text color="gray.500" fontSize="xs" textTransform="uppercase">
+                            Census count
+                          </Text>
+                          <Text fontWeight="semibold" mt={1}>
+                            {detail.value == null ? "—" : String(detail.value)}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text color="gray.500" fontSize="xs" textTransform="uppercase">
+                            Percentile
+                          </Text>
+                          <Text fontWeight="semibold" mt={1}>
+                            {detail.affinity == null ? "—" : String(detail.affinity)}
+                          </Text>
+                        </Box>
+                        <Box>
+                          <Text color="gray.500" fontSize="xs" textTransform="uppercase">
+                            Relative rank
+                          </Text>
+                          <Text fontWeight="semibold" mt={1}>
+                            {detail.rank == null ? "—" : String(detail.rank)}
+                          </Text>
+                        </Box>
+                      </SimpleGrid>
+                      <Text color="gray.600" fontSize="xs" mt={4}>
+                        This signal’s percentile contributes{" "}
+                        {detail.affinity == null
+                          ? "no points"
+                          : `${String(detail.affinity)} points`}{" "}
+                        to the average used for the overall affinity score.
+                      </Text>
+                    </Box>
+                  ),
+                )}
+              </SimpleGrid>
+            ) : (
+              <Text color="gray.600">
+                No census details are available for this row.
+              </Text>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              onClick={() => {
+                detailModal.onClose();
+                setSelectedResultRow(null);
+              }}
+            >
+              Close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal
         closeOnOverlayClick={!isUploading}

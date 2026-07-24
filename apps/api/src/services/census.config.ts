@@ -16,7 +16,21 @@ export interface CensusVariableConfig {
   entity: EntityTarget<any>;
   columnProperty: keyof any;
   displayName: string;
+  categoryName: string;
 }
+
+const censusCategoryNames = new Map<EntityTarget<any>, string>([
+  [PopulationByAgeBand, "Age"],
+  [OccupationByCategory, "Occupation"],
+  [HouseholdComposition, "Household Composition"],
+  [CarVanAvailability, "Car & Van Availability"],
+  [NsSecClassification, "Socio-economic Classification"],
+  [HouseholdSize, "Household Size"],
+  [HouseholdTenure, "Household Tenure"],
+  [EconomicActivity, "Economic Activity"],
+  [AccommodationType, "Accommodation Type"],
+  [QualificationLevel, "Qualifications"],
+]);
 
 const censusVariableDefinitions: Array<
   [string, EntityTarget<any>, string, string]
@@ -582,6 +596,7 @@ export const CENSUS_VARIABLES =
         entity,
         columnProperty,
         displayName,
+        categoryName: censusCategoryNames.get(entity) ?? "Other",
       };
       return variables;
     },
