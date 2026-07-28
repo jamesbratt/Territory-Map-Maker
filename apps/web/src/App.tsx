@@ -17,6 +17,7 @@ import {
   Heading,
   HStack,
   Icon,
+  Image,
   Input,
   Modal,
   ModalBody,
@@ -39,7 +40,13 @@ import {
   Tr,
   useDisclosure,
 } from "@chakra-ui/react";
-import { type ChangeEvent, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ApiStatus } from "./components/ApiStatus";
 import { uploadCsv } from "./lib/api";
 
@@ -174,13 +181,42 @@ const personas = [
   },
 ] as const;
 
+const howItWorksSteps = [
+  {
+    number: "01",
+    title: "Upload data and choose a persona",
+    description:
+      "Choose a CSV containing your customer postcodes, then select the audience persona you want to find. Your original columns stay intact.",
+  },
+  {
+    number: "02",
+    title: "Understand your affinity score",
+    description:
+      "Each customer gets a 0–100 score based on their postcode’s census signals. Higher scores indicate a stronger persona match, while the rank compares them with the rest of your data.",
+  },
+  {
+    number: "03",
+    title: "Export your enriched data",
+    description:
+      "Download an enriched CSV containing affinity scores and audience insights, ready to use in your CRM, mailing lists, campaign planning, or further analysis.",
+  },
+] as const;
+
 export default function App() {
+  const currentYear = new Date().getFullYear();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const postcodeInputRef = useRef<HTMLInputElement>(null);
+  const uploadSectionRef = useRef<HTMLDivElement>(null);
+  const resultsSectionRef = useRef<HTMLDivElement>(null);
+  const shouldScrollToResultsRef = useRef(false);
   const personaModal = useDisclosure();
   const detailModal = useDisclosure();
-  const [postcodeColumn, setPostcodeColumn] = useState("postcode");
+  const [postcodeColumn, setPostcodeColumn] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+  const [resultsPersonaName, setResultsPersonaName] = useState<string | null>(
+    null,
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [uploadRows, setUploadRows] = useState<Record<string, unknown>[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -245,6 +281,55 @@ export default function App() {
           ),
     [rankFilter, uploadRows],
   );
+  const audienceSummary = useMemo(() => {
+    const scoredRows = uploadRows
+      .map((row) => ({
+        row,
+        score: Number(row.segment_affinity_score),
+      }))
+      .filter(({ score }) => Number.isFinite(score));
+    const averageScore =
+      scoredRows.length > 0
+        ? scoredRows.reduce((total, { score }) => total + score, 0) /
+          scoredRows.length
+        : null;
+    const highAffinityCount = scoredRows.filter(
+      ({ score }) => score >= 60,
+    ).length;
+    const primeProspectCount = scoredRows.filter(
+      ({ score }) => score >= 80,
+    ).length;
+    const strongestResult = scoredRows.reduce<
+      (typeof scoredRows)[number] | null
+    >(
+      (strongest, result) =>
+        strongest === null || result.score > strongest.score
+          ? result
+          : strongest,
+      null,
+    );
+    const strongestLocation =
+      strongestResult?.row.geography ??
+      strongestResult?.row.postcode ??
+      strongestResult?.row.geography_code;
+
+    return {
+      averageScore,
+      highAffinityCount,
+      highAffinityPercentage:
+        scoredRows.length > 0
+          ? Math.round((highAffinityCount / scoredRows.length) * 100)
+          : 0,
+      primeProspectCount,
+      primeProspectPercentage:
+        scoredRows.length > 0
+          ? Math.round((primeProspectCount / scoredRows.length) * 100)
+          : 0,
+      strongestLocation:
+        strongestLocation == null ? "Not available" : String(strongestLocation),
+      strongestScore: strongestResult?.score ?? null,
+    };
+  }, [uploadRows]);
   const totalPages = Math.ceil(filteredRows.length / RESULTS_PER_PAGE);
   const pageStart = (currentPage - 1) * RESULTS_PER_PAGE;
   const sortedRows = useMemo(() => {
@@ -282,6 +367,16 @@ export default function App() {
   const selectedAffinityColor = selectedHasScore
     ? getAffinityColor(selectedScore)
     : "gray";
+
+  useEffect(() => {
+    if (!shouldScrollToResultsRef.current || uploadRows.length === 0) return;
+
+    shouldScrollToResultsRef.current = false;
+    resultsSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, [uploadRows]);
 
   const openResultDetails = (row: Record<string, unknown>) => {
     setSelectedResultRow(row);
@@ -344,6 +439,8 @@ export default function App() {
         status: "success",
         message: `${pendingFile.name} uploaded for the ${persona.name} persona. ${rows.length} rows processed.`,
       });
+      shouldScrollToResultsRef.current = true;
+      setResultsPersonaName(persona.name);
       setUploadRows(rows);
       setCurrentPage(1);
       setRankFilter("all");
@@ -362,7 +459,7 @@ export default function App() {
   };
 
   return (
-    <Box minH="100vh">
+    <Box display="flex" flexDirection="column" minH="100vh">
       <Box as="header" bg="white" borderBottomWidth="1px">
         <Container maxW="7xl" py={4}>
           <Flex align="center" justify="space-between">
@@ -379,7 +476,7 @@ export default function App() {
                 <Icon as={AtSignIcon} boxSize={4} />
               </Flex>
               <Heading fontSize="lg" letterSpacing="-0.02em">
-                Segment
+                Segmentbase
               </Heading>
             </HStack>
             <ApiStatus />
@@ -387,37 +484,198 @@ export default function App() {
         </Container>
       </Box>
 
-      <Container maxW="7xl" py={{ base: 10, md: 16 }}>
+      <Container flex="1" maxW="7xl" py={{ base: 10, md: 16 }}>
         <Stack align="center" spacing={6} textAlign="center">
-          <Text
-            color="brand.600"
-            fontSize="sm"
-            fontWeight="semibold"
-            letterSpacing="0.08em"
-            textTransform="uppercase"
-          >
-            Audience intelligence
-          </Text>
           <Heading
             fontSize={{ base: "4xl", md: "6xl" }}
-            letterSpacing="-0.045em"
-            lineHeight="0.98"
+            letterSpacing="-0.025em"
+            lineHeight="1.08"
             maxW="3xl"
           >
-            Understand the people behind every postcode.
+            Understand the people behind every postcode
           </Heading>
           <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }} maxW="2xl">
             Upload customer data, enrich it with census insights, and build
             clear, actionable audience segments.
           </Text>
 
+          <Button
+            as="a"
+            colorScheme="brand"
+            href="#upload"
+            onClick={(event) => {
+              event.preventDefault();
+              postcodeInputRef.current?.focus({ preventScroll: true });
+              uploadSectionRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+            rightIcon={<ArrowForwardIcon />}
+            size="lg"
+          >
+            Try now
+          </Button>
+
+        </Stack>
+
+        <Box as="section" mt={{ base: 24, md: 32 }}>
+          <Box mb={{ base: 8, md: 10 }} textAlign="center">
+            <Text
+              color="brand.600"
+              fontSize="sm"
+              fontWeight="semibold"
+              letterSpacing="0.08em"
+              textTransform="uppercase"
+            >
+              How it works
+            </Text>
+            <Heading
+              fontSize={{ base: "3xl", md: "4xl" }}
+              letterSpacing="-0.035em"
+              mt={2}
+            >
+              From postcodes to audience insight
+            </Heading>
+            <Text
+              color="gray.600"
+              fontSize="lg"
+              maxW="2xl"
+              mt={3}
+              mx="auto"
+            >
+              Turn a simple customer file into clear, actionable audience
+              intelligence in three straightforward steps.
+            </Text>
+          </Box>
+
+          <SimpleGrid
+            columns={{ base: 1, lg: 2 }}
+            gap={{ base: 6, lg: 8 }}
+            h={{ base: "auto", lg: "560px" }}
+          >
+            <Stack h="full" spacing={4}>
+              {howItWorksSteps.map((step) => (
+                <Flex
+                  bg="white"
+                  borderWidth="1px"
+                  direction="column"
+                  flex="1"
+                  justify="center"
+                  key={step.number}
+                  minH={{ base: "190px", lg: 0 }}
+                  p={{ base: 6, md: 7 }}
+                  rounded="xl"
+                >
+                  <HStack align="start" spacing={5}>
+                    <Flex
+                      align="center"
+                      bg="brand.50"
+                      color="brand.700"
+                      flexShrink={0}
+                      fontSize="sm"
+                      fontWeight="bold"
+                      h={10}
+                      justify="center"
+                      rounded="full"
+                      w={10}
+                    >
+                      {step.number}
+                    </Flex>
+                    <Box>
+                      <Heading fontSize="xl" letterSpacing="-0.02em">
+                        {step.title}
+                      </Heading>
+                      <Text color="gray.600" lineHeight="tall" mt={2}>
+                        {step.description}
+                      </Text>
+                    </Box>
+                  </HStack>
+                </Flex>
+              ))}
+            </Stack>
+
+            <Box
+              h={{ base: "380px", md: "500px", lg: "full" }}
+              overflow="hidden"
+              position="relative"
+              rounded="2xl"
+            >
+              <Image
+                alt="Segment audience analytics results"
+                h="full"
+                objectFit="cover"
+                objectPosition="calc(50% + 100px) center"
+                src="/images/segmentbase-screen-shot.png"
+                w="full"
+              />
+              <Box
+                bgGradient="linear(to-t, blackAlpha.600, transparent)"
+                bottom={0}
+                left={0}
+                position="absolute"
+                right={0}
+                top="45%"
+              />
+              <Text
+                bottom={7}
+                color="white"
+                fontSize="lg"
+                fontWeight="semibold"
+                left={7}
+                maxW="sm"
+                position="absolute"
+                textShadow="0 1px 12px rgba(0, 0, 0, 0.35)"
+              >
+                See the people and patterns behind every location.
+              </Text>
+            </Box>
+          </SimpleGrid>
+        </Box>
+
+        <Box
+          as="section"
+          id="upload"
+          mt={{ base: 24, md: 32 }}
+          ref={uploadSectionRef}
+          scrollMarginTop={8}
+        >
+          <Box mb={{ base: 8, md: 10 }} textAlign="center">
+            <Text
+              color="brand.600"
+              fontSize="sm"
+              fontWeight="semibold"
+              letterSpacing="0.08em"
+              textTransform="uppercase"
+            >
+              Get started
+            </Text>
+            <Heading
+              fontSize={{ base: "3xl", md: "4xl" }}
+              letterSpacing="-0.035em"
+              mt={2}
+            >
+              Find your audience
+            </Heading>
+            <Text
+              color="gray.600"
+              fontSize="lg"
+              maxW="2xl"
+              mt={3}
+              mx="auto"
+            >
+              Upload your customer data to enrich every postcode with census
+              insight and audience affinity.
+            </Text>
+          </Box>
+
           <Box
             bg="white"
             borderWidth="1px"
             maxW="2xl"
+            mx="auto"
             p={{ base: 5, md: 6 }}
             rounded="xl"
-            textAlign="left"
             w="full"
           >
             <Stack spacing={4}>
@@ -425,7 +683,8 @@ export default function App() {
                 <FormLabel fontSize="sm">Postcode column</FormLabel>
                 <Input
                   onChange={(event) => setPostcodeColumn(event.target.value)}
-                  placeholder="postcode"
+                  placeholder="Enter your postcode column name, e.g. customer_postcode"
+                  ref={postcodeInputRef}
                   value={postcodeColumn}
                 />
               </FormControl>
@@ -455,19 +714,30 @@ export default function App() {
               )}
             </Stack>
           </Box>
-        </Stack>
+        </Box>
 
         {uploadRows.length > 0 && (
-          <Box mt={{ base: 10, md: 14 }}>
+          <Box
+            display="flex"
+            flexDirection="column"
+            mt={{ base: 10, md: 14 }}
+            ref={resultsSectionRef}
+            scrollMarginTop={8}
+          >
             <Flex
               align={{ base: "start", sm: "end" }}
               justify="space-between"
               mb={4}
               direction={{ base: "column", lg: "row" }}
               gap={2}
+              order={-1}
             >
               <Box>
-                <Heading fontSize="2xl">Audience results</Heading>
+                <Heading fontSize="2xl">
+                  {resultsPersonaName
+                    ? `${resultsPersonaName} audience results`
+                    : "Audience results"}
+                </Heading>
                 <Text color="gray.600" mt={1}>
                   {rankFilter === "all"
                     ? `${uploadRows.length} enriched ${
@@ -537,6 +807,72 @@ export default function App() {
                 </Button>
               </Stack>
             </Flex>
+
+            <Box mb={8} order={-2}>
+              <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
+                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
+                    Average persona affinity
+                  </Text>
+                  <Heading fontSize="3xl" mt={2}>
+                    {audienceSummary.averageScore === null
+                      ? "—"
+                      : Math.round(audienceSummary.averageScore)}
+                  </Heading>
+                  <Text color="gray.600" fontSize="sm" mt={1}>
+                    Average match to the {resultsPersonaName ?? "selected"} persona
+                  </Text>
+                </Box>
+
+                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
+                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
+                    Strong persona matches
+                  </Text>
+                  <Heading fontSize="3xl" mt={2}>
+                    {audienceSummary.highAffinityPercentage}%
+                  </Heading>
+                  <Text color="gray.600" fontSize="sm" mt={1}>
+                    {audienceSummary.highAffinityCount} potential customers
+                    scoring 60+
+                  </Text>
+                </Box>
+
+                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
+                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
+                    Priority prospects
+                  </Text>
+                  <Heading fontSize="3xl" mt={2}>
+                    {audienceSummary.primeProspectPercentage}%
+                  </Heading>
+                  <Text color="gray.600" fontSize="sm" mt={1}>
+                    {audienceSummary.primeProspectCount} high-priority customers
+                    scoring 80+
+                  </Text>
+                </Box>
+
+                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
+                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
+                    Strongest persona location
+                  </Text>
+                  <Heading
+                    fontSize="xl"
+                    mt={2}
+                    overflow="hidden"
+                    textOverflow="ellipsis"
+                    whiteSpace="nowrap"
+                  >
+                    {audienceSummary.strongestLocation}
+                  </Heading>
+                  <Text color="gray.600" fontSize="sm" mt={1}>
+                    {audienceSummary.strongestScore === null
+                      ? "No score available"
+                      : `Affinity score ${Math.round(
+                          audienceSummary.strongestScore,
+                        )}`}
+                  </Text>
+                </Box>
+              </SimpleGrid>
+            </Box>
 
             <TableContainer
               bg="white"
@@ -717,6 +1053,30 @@ export default function App() {
         )}
 
       </Container>
+
+      <Box
+        as="footer"
+        bg="white"
+        borderTopWidth="1px"
+      >
+        <Container maxW="7xl" py={5}>
+          <Stack color="gray.500" fontSize="xs" spacing={1} textAlign="center">
+            <Text fontSize="sm">© {currentYear} Segmentbase</Text>
+            <Text>
+              Contains OS data © Crown copyright and database right{" "}
+              {currentYear}
+            </Text>
+            <Text>
+              Contains Royal Mail data © Royal Mail copyright and database
+              right {currentYear}
+            </Text>
+            <Text>
+              Source: Office for National Statistics licensed under the Open
+              Government Licence v.3.0
+            </Text>
+          </Stack>
+        </Container>
+      </Box>
 
       <Modal
         isCentered
