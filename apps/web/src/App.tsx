@@ -1,8 +1,4 @@
-import {
-  ArrowForwardIcon,
-  AtSignIcon,
-  DownloadIcon,
-} from "@chakra-ui/icons";
+import { ArrowForwardIcon, AtSignIcon, DownloadIcon } from "@chakra-ui/icons";
 import {
   Alert,
   AlertDescription,
@@ -40,17 +36,23 @@ import {
   Tr,
   useDisclosure,
 } from "@chakra-ui/react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  type ChangeEvent,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+  type ExpressionSpecification,
+  LngLatBounds,
+  Map as MapLibreMap,
+  NavigationControl,
+  setWorkerUrl,
+} from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { ApiStatus } from "./components/ApiStatus";
 import { uploadCsv } from "./lib/api";
 
 const RESULTS_PER_PAGE = 10;
+setWorkerUrl(`${import.meta.env.BASE_URL}maplibre-gl-worker.mjs`);
+
+const MAPTILER_API_KEY = "rvEdtOdLKbADHjJHzejJ";
+const MAP_STYLE_URL = `https://api.maptiler.com/maps/base-v4/style.json?key=${MAPTILER_API_KEY}`;
 const SEGMENT_RANK_ORDER = [
   "top 10%",
   "top 20%",
@@ -62,6 +64,44 @@ const SEGMENT_RANK_ORDER = [
   "20-30%",
   "10-20%",
   "bottom 10%",
+];
+const SEGMENT_RANK_COLORS: Record<string, string> = {
+  "top 10%": "#166534",
+  "top 20%": "#22c55e",
+  "top 30%": "#84cc16",
+  "top 40%": "#a3e635",
+  "top 50%": "#facc15",
+  "40-50%": "#fbbf24",
+  "30-40%": "#fb923c",
+  "20-30%": "#f97316",
+  "10-20%": "#ef4444",
+  "bottom 10%": "#991b1b",
+};
+const UNRANKED_COLOR = "#64748b";
+const SEGMENT_RANK_COLOR_EXPRESSION: ExpressionSpecification = [
+  "match",
+  ["get", "rank"],
+  "top 10%",
+  SEGMENT_RANK_COLORS["top 10%"],
+  "top 20%",
+  SEGMENT_RANK_COLORS["top 20%"],
+  "top 30%",
+  SEGMENT_RANK_COLORS["top 30%"],
+  "top 40%",
+  SEGMENT_RANK_COLORS["top 40%"],
+  "top 50%",
+  SEGMENT_RANK_COLORS["top 50%"],
+  "40-50%",
+  SEGMENT_RANK_COLORS["40-50%"],
+  "30-40%",
+  SEGMENT_RANK_COLORS["30-40%"],
+  "20-30%",
+  SEGMENT_RANK_COLORS["20-30%"],
+  "10-20%",
+  SEGMENT_RANK_COLORS["10-20%"],
+  "bottom 10%",
+  SEGMENT_RANK_COLORS["bottom 10%"],
+  UNRANKED_COLOR,
 ];
 
 function getAffinityColor(score: number): string {
@@ -114,7 +154,9 @@ function getCensusDetails(row: Record<string, unknown>) {
       );
 
       return {
-        label: String(friendlyLabelEntry?.[1] ?? valueEntry?.[0] ?? "Census value"),
+        label: String(
+          friendlyLabelEntry?.[1] ?? valueEntry?.[0] ?? "Census value",
+        ),
         value: valueEntry?.[1],
         affinity: affinityEntry?.[1],
         rank: rankEntry?.[1],
@@ -149,7 +191,8 @@ const personas = [
   {
     id: "affluent-homeowners",
     name: "Affluent homeowners",
-    description: "Established, high-value households with strong spending power.",
+    description:
+      "Established, high-value households with strong spending power.",
     variables: [
       "age_45_54",
       "higher_managerial_professional",
@@ -208,24 +251,29 @@ export default function App() {
   const postcodeInputRef = useRef<HTMLInputElement>(null);
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const shouldScrollToResultsRef = useRef(false);
   const personaModal = useDisclosure();
   const detailModal = useDisclosure();
   const [postcodeColumn, setPostcodeColumn] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(
+    null,
+  );
   const [resultsPersonaName, setResultsPersonaName] = useState<string | null>(
     null,
   );
   const [isUploading, setIsUploading] = useState(false);
   const [uploadRows, setUploadRows] = useState<Record<string, unknown>[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortOrder, setSortOrder] = useState<"none" | "ascending" | "descending">(
-    "none",
-  );
+  const [sortOrder, setSortOrder] = useState<
+    "none" | "ascending" | "descending"
+  >("none");
   const [rankFilter, setRankFilter] = useState("all");
-  const [selectedResultRow, setSelectedResultRow] =
-    useState<Record<string, unknown> | null>(null);
+  const [selectedResultRow, setSelectedResultRow] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const [uploadResult, setUploadResult] = useState<{
     status: "success" | "error";
     message: string;
@@ -241,11 +289,7 @@ export default function App() {
     fields.delete("geography_code");
     fields.delete("postcode");
 
-    return [
-      "segment_affinity_rank",
-      "segment_affinity_score",
-      ...fields,
-    ];
+    return ["segment_affinity_rank", "segment_affinity_score", ...fields];
   }, [uploadRows]);
 
   const rankOptions = useMemo(
@@ -257,7 +301,7 @@ export default function App() {
             .filter(
               (rank): rank is string =>
                 typeof rank === "string" && rank.length > 0,
-          ),
+            ),
         ),
       ].sort((first, second) => {
         const firstIndex = SEGMENT_RANK_ORDER.indexOf(first.toLowerCase());
@@ -339,7 +383,8 @@ export default function App() {
       const firstValue = first.segment_affinity_score;
       const secondValue = second.segment_affinity_score;
       const firstScore = firstValue == null ? Number.NaN : Number(firstValue);
-      const secondScore = secondValue == null ? Number.NaN : Number(secondValue);
+      const secondScore =
+        secondValue == null ? Number.NaN : Number(secondValue);
       const firstHasScore = Number.isFinite(firstScore);
       const secondHasScore = Number.isFinite(secondScore);
 
@@ -377,6 +422,109 @@ export default function App() {
       block: "start",
     });
   }, [uploadRows]);
+
+  useEffect(() => {
+    if (uploadRows.length === 0 || !mapContainerRef.current) return;
+
+    const features = filteredRows.flatMap((row, rowIndex) => {
+      if (
+        row.lat === null ||
+        row.lat === undefined ||
+        row.lat === "" ||
+        row.long === null ||
+        row.long === undefined ||
+        row.long === ""
+      ) {
+        return [];
+      }
+
+      const latitude = Number(row.lat);
+      const longitude = Number(row.long);
+
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          type: "Feature" as const,
+          geometry: {
+            type: "Point" as const,
+            coordinates: [longitude, latitude],
+          },
+          properties: {
+            rowIndex,
+            postcode: String(row.postcode ?? ""),
+            rank: String(row.segment_affinity_rank ?? ""),
+          },
+        },
+      ];
+    });
+
+    const map = new MapLibreMap({
+      container: mapContainerRef.current,
+      style: MAP_STYLE_URL,
+      center: [-2.7, 52.6],
+      zoom: 5.4,
+    });
+
+    map.addControl(new NavigationControl(), "top-right");
+
+    map.on("load", () => {
+      map.addSource("upload-rows", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features,
+        },
+      });
+      map.addLayer({
+        id: "upload-row-dots",
+        type: "circle",
+        source: "upload-rows",
+        paint: {
+          "circle-color": SEGMENT_RANK_COLOR_EXPRESSION,
+          "circle-opacity": 0.78,
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            4,
+            3,
+            12,
+            7,
+          ],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-opacity": 0.8,
+          "circle-stroke-width": 1,
+        },
+      });
+
+      if (features.length > 0) {
+        const bounds = features.reduce(
+          (pointBounds, feature) =>
+            pointBounds.extend(
+              feature.geometry.coordinates as [number, number],
+            ),
+          new LngLatBounds(),
+        );
+        map.fitBounds(bounds, {
+          padding: 48,
+          maxZoom: 13,
+          duration: 0,
+        });
+      }
+    });
+
+    return () => map.remove();
+  }, [filteredRows, uploadRows.length]);
 
   const openResultDetails = (row: Record<string, unknown>) => {
     setSelectedResultRow(row);
@@ -430,11 +578,9 @@ export default function App() {
     setUploadResult(null);
 
     try {
-      const rows = await uploadCsv(
-        pendingFile,
-        postcodeColumn.trim(),
-        [...persona.variables],
-      );
+      const rows = await uploadCsv(pendingFile, postcodeColumn.trim(), [
+        ...persona.variables,
+      ]);
       setUploadResult({
         status: "success",
         message: `${pendingFile.name} uploaded for the ${persona.name} persona. ${rows.length} rows processed.`,
@@ -516,7 +662,6 @@ export default function App() {
           >
             Try now
           </Button>
-
         </Stack>
 
         <Box as="section" mt={{ base: 24, md: 32 }}>
@@ -537,13 +682,7 @@ export default function App() {
             >
               From postcodes to audience insight
             </Heading>
-            <Text
-              color="gray.600"
-              fontSize="lg"
-              maxW="2xl"
-              mt={3}
-              mx="auto"
-            >
+            <Text color="gray.600" fontSize="lg" maxW="2xl" mt={3} mx="auto">
               Turn a simple customer file into clear, actionable audience
               intelligence in three straightforward steps.
             </Text>
@@ -657,13 +796,7 @@ export default function App() {
             >
               Find your audience
             </Heading>
-            <Text
-              color="gray.600"
-              fontSize="lg"
-              maxW="2xl"
-              mt={3}
-              mx="auto"
-            >
+            <Text color="gray.600" fontSize="lg" maxW="2xl" mt={3} mx="auto">
               Upload your customer data to enrich every postcode with census
               insight and audience affinity.
             </Text>
@@ -789,8 +922,12 @@ export default function App() {
                     value={sortOrder}
                   >
                     <option value="none">No sorting</option>
-                    <option value="ascending">Affinity score: low to high</option>
-                    <option value="descending">Affinity score: high to low</option>
+                    <option value="ascending">
+                      Affinity score: low to high
+                    </option>
+                    <option value="descending">
+                      Affinity score: high to low
+                    </option>
                   </Select>
                 </FormControl>
                 <Button
@@ -808,8 +945,13 @@ export default function App() {
               </Stack>
             </Flex>
 
-            <Box mb={8} order={-2}>
-              <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+            <SimpleGrid
+              columns={{ base: 1, lg: 2 }}
+              mb={8}
+              order={-2}
+              spacing={{ base: 4, lg: 8 }}
+            >
+              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
                 <Box bg="white" borderWidth="1px" p={5} rounded="xl">
                   <Text color="gray.500" fontSize="sm" fontWeight="semibold">
                     Average persona affinity
@@ -820,7 +962,8 @@ export default function App() {
                       : Math.round(audienceSummary.averageScore)}
                   </Heading>
                   <Text color="gray.600" fontSize="sm" mt={1}>
-                    Average match to the {resultsPersonaName ?? "selected"} persona
+                    Average match to the {resultsPersonaName ?? "selected"}{" "}
+                    persona
                   </Text>
                 </Box>
 
@@ -872,7 +1015,45 @@ export default function App() {
                   </Text>
                 </Box>
               </SimpleGrid>
-            </Box>
+              <Box
+                borderWidth="1px"
+                minH={{ base: "320px", lg: "unset" }}
+                overflow="hidden"
+                position="relative"
+                rounded="xl"
+                w="full"
+              >
+                <Box h="full" minH="320px" ref={mapContainerRef} w="full" />
+                <Box
+                  bg="whiteAlpha.900"
+                  bottom={3}
+                  boxShadow="sm"
+                  left={3}
+                  maxH="210px"
+                  overflowY="auto"
+                  p={3}
+                  position="absolute"
+                  rounded="md"
+                  zIndex={1}
+                >
+                  <Text fontSize="xs" fontWeight="bold" mb={2}>
+                    Segment affinity rank
+                  </Text>
+                  <Stack spacing={1}>
+                    {SEGMENT_RANK_ORDER.map((rank) => (
+                      <HStack key={rank} spacing={2}>
+                        <Box
+                          bg={SEGMENT_RANK_COLORS[rank]}
+                          borderRadius="full"
+                          boxSize="10px"
+                        />
+                        <Text fontSize="xs">{rank}</Text>
+                      </HStack>
+                    ))}
+                  </Stack>
+                </Box>
+              </Box>
+            </SimpleGrid>
 
             <TableContainer
               bg="white"
@@ -893,7 +1074,11 @@ export default function App() {
                 <Tbody>
                   {pagedRows.length === 0 && (
                     <Tr>
-                      <Td colSpan={resultColumns.length} py={10} textAlign="center">
+                      <Td
+                        colSpan={resultColumns.length}
+                        py={10}
+                        textAlign="center"
+                      >
                         <Text color="gray.600">
                           No results match the selected segment rank.
                         </Text>
@@ -936,46 +1121,49 @@ export default function App() {
                             ? getAffinityColor(score)
                             : "gray";
                           const displayValue =
-                            value === null || value === undefined || value === ""
+                            value === null ||
+                            value === undefined ||
+                            value === ""
                               ? "—"
                               : typeof value === "object"
                                 ? JSON.stringify(value)
                                 : String(value);
 
                           return (
-                              <Td key={column} maxW="280px" py={3}>
-                                {column === "segment_affinity_rank" ? (
-                                  <HStack minW="180px" spacing={2}>
-                                    <Badge
-                                      colorScheme={affinityColor}
-                                      px={2.5}
-                                      py={1}
-                                      rounded="full"
-                                      textTransform="capitalize"
-                                      whiteSpace="nowrap"
-                                    >
-                                      {displayValue}
-                                    </Badge>
-                                    <Button
-                                      className="row-details-action"
-                                      colorScheme="brand"
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        openResultDetails(row);
-                                      }}
-                                      opacity={{ base: 1, md: 0 }}
-                                      size="xs"
-                                      transition="opacity 0.15s ease"
-                                      whiteSpace="nowrap"
-                                      _focusVisible={{
-                                        opacity: 1,
-                                        boxShadow: "outline",
-                                      }}
-                                    >
-                                      View details
-                                    </Button>
-                                  </HStack>
-                              ) : column === "segment_affinity_score" && hasScore ? (
+                            <Td key={column} maxW="280px" py={3}>
+                              {column === "segment_affinity_rank" ? (
+                                <HStack minW="180px" spacing={2}>
+                                  <Badge
+                                    colorScheme={affinityColor}
+                                    px={2.5}
+                                    py={1}
+                                    rounded="full"
+                                    textTransform="capitalize"
+                                    whiteSpace="nowrap"
+                                  >
+                                    {displayValue}
+                                  </Badge>
+                                  <Button
+                                    className="row-details-action"
+                                    colorScheme="brand"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      openResultDetails(row);
+                                    }}
+                                    opacity={{ base: 1, md: 0 }}
+                                    size="xs"
+                                    transition="opacity 0.15s ease"
+                                    whiteSpace="nowrap"
+                                    _focusVisible={{
+                                      opacity: 1,
+                                      boxShadow: "outline",
+                                    }}
+                                  >
+                                    View details
+                                  </Button>
+                                </HStack>
+                              ) : column === "segment_affinity_score" &&
+                                hasScore ? (
                                 <HStack minW="150px" spacing={3}>
                                   <Progress
                                     colorScheme={affinityColor}
@@ -1023,8 +1211,8 @@ export default function App() {
               >
                 <Text color="gray.600" fontSize="sm">
                   Showing {pageStart + 1}–
-                  {Math.min(pageStart + RESULTS_PER_PAGE, filteredRows.length)} of{" "}
-                  {filteredRows.length}
+                  {Math.min(pageStart + RESULTS_PER_PAGE, filteredRows.length)}{" "}
+                  of {filteredRows.length}
                 </Text>
                 <HStack>
                   <Button
@@ -1051,14 +1239,9 @@ export default function App() {
             )}
           </Box>
         )}
-
       </Container>
 
-      <Box
-        as="footer"
-        bg="white"
-        borderTopWidth="1px"
-      >
+      <Box as="footer" bg="white" borderTopWidth="1px">
         <Container maxW="7xl" py={5}>
           <Stack color="gray.500" fontSize="xs" spacing={1} textAlign="center">
             <Text fontSize="sm">© {currentYear} Segmentbase</Text>
@@ -1067,8 +1250,8 @@ export default function App() {
               {currentYear}
             </Text>
             <Text>
-              Contains Royal Mail data © Royal Mail copyright and database
-              right {currentYear}
+              Contains Royal Mail data © Royal Mail copyright and database right{" "}
+              {currentYear}
             </Text>
             <Text>
               Source: Office for National Statistics licensed under the Open
@@ -1105,7 +1288,9 @@ export default function App() {
                   </Text>
                   <HStack mt={2} spacing={3}>
                     <Heading fontSize="3xl">
-                      {selectedHasScore ? `${selectedScore}/100` : "Not available"}
+                      {selectedHasScore
+                        ? `${selectedScore}/100`
+                        : "Not available"}
                     </Heading>
                     <Badge
                       colorScheme={selectedAffinityColor}
@@ -1147,71 +1332,84 @@ export default function App() {
 
             <Text color="gray.600" fontSize="sm" mb={4}>
               Each available signal contributes equally. The census count is
-              converted into a percentile from 0 to 100, while the rank describes
-              how that percentile compares with the rest of the dataset.
+              converted into a percentile from 0 to 100, while the rank
+              describes how that percentile compares with the rest of the
+              dataset.
             </Text>
 
             {selectedCensusDetails.length > 0 ? (
               <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
-                {selectedCensusDetails.map(
-                  (detail, detailIndex) => (
-                    <Box
-                      bg="gray.50"
-                      borderWidth="1px"
-                      key={`${detail.label}-${detailIndex}`}
-                      p={5}
-                      rounded="lg"
+                {selectedCensusDetails.map((detail, detailIndex) => (
+                  <Box
+                    bg="gray.50"
+                    borderWidth="1px"
+                    key={`${detail.label}-${detailIndex}`}
+                    p={5}
+                    rounded="lg"
+                  >
+                    <Text
+                      color="gray.500"
+                      fontSize="xs"
+                      fontWeight="semibold"
+                      letterSpacing="0.04em"
+                      textTransform="uppercase"
                     >
-                      <Text
-                        color="gray.500"
-                        fontSize="xs"
-                        fontWeight="semibold"
-                        letterSpacing="0.04em"
-                        textTransform="uppercase"
-                      >
-                        {detail.category == null
-                          ? "Census signal"
-                          : String(detail.category)}
-                      </Text>
-                      <Text color="brand.700" fontWeight="bold">
-                        {detail.label}
-                      </Text>
-                      <SimpleGrid columns={3} mt={4} spacing={3}>
-                        <Box>
-                          <Text color="gray.500" fontSize="xs" textTransform="uppercase">
-                            Census count
-                          </Text>
-                          <Text fontWeight="semibold" mt={1}>
-                            {detail.value == null ? "—" : String(detail.value)}
-                          </Text>
-                        </Box>
-                        <Box>
-                          <Text color="gray.500" fontSize="xs" textTransform="uppercase">
-                            Percentile
-                          </Text>
-                          <Text fontWeight="semibold" mt={1}>
-                            {detail.affinity == null ? "—" : String(detail.affinity)}
-                          </Text>
-                        </Box>
-                        <Box>
-                          <Text color="gray.500" fontSize="xs" textTransform="uppercase">
-                            Relative rank
-                          </Text>
-                          <Text fontWeight="semibold" mt={1}>
-                            {detail.rank == null ? "—" : String(detail.rank)}
-                          </Text>
-                        </Box>
-                      </SimpleGrid>
-                      <Text color="gray.600" fontSize="xs" mt={4}>
-                        This signal’s percentile contributes{" "}
-                        {detail.affinity == null
-                          ? "no points"
-                          : `${String(detail.affinity)} points`}{" "}
-                        to the average used for the overall affinity score.
-                      </Text>
-                    </Box>
-                  ),
-                )}
+                      {detail.category == null
+                        ? "Census signal"
+                        : String(detail.category)}
+                    </Text>
+                    <Text color="brand.700" fontWeight="bold">
+                      {detail.label}
+                    </Text>
+                    <SimpleGrid columns={3} mt={4} spacing={3}>
+                      <Box>
+                        <Text
+                          color="gray.500"
+                          fontSize="xs"
+                          textTransform="uppercase"
+                        >
+                          Census count
+                        </Text>
+                        <Text fontWeight="semibold" mt={1}>
+                          {detail.value == null ? "—" : String(detail.value)}
+                        </Text>
+                      </Box>
+                      <Box>
+                        <Text
+                          color="gray.500"
+                          fontSize="xs"
+                          textTransform="uppercase"
+                        >
+                          Percentile
+                        </Text>
+                        <Text fontWeight="semibold" mt={1}>
+                          {detail.affinity == null
+                            ? "—"
+                            : String(detail.affinity)}
+                        </Text>
+                      </Box>
+                      <Box>
+                        <Text
+                          color="gray.500"
+                          fontSize="xs"
+                          textTransform="uppercase"
+                        >
+                          Relative rank
+                        </Text>
+                        <Text fontWeight="semibold" mt={1}>
+                          {detail.rank == null ? "—" : String(detail.rank)}
+                        </Text>
+                      </Box>
+                    </SimpleGrid>
+                    <Text color="gray.600" fontSize="xs" mt={4}>
+                      This signal’s percentile contributes{" "}
+                      {detail.affinity == null
+                        ? "no points"
+                        : `${String(detail.affinity)} points`}{" "}
+                      to the average used for the overall affinity score.
+                    </Text>
+                  </Box>
+                ))}
               </SimpleGrid>
             ) : (
               <Text color="gray.600">
@@ -1275,7 +1473,10 @@ export default function App() {
                       transform: "translateY(-1px)",
                     }}
                   >
-                    <Text color={isSelected ? "brand.700" : "gray.800"} fontWeight="bold">
+                    <Text
+                      color={isSelected ? "brand.700" : "gray.800"}
+                      fontWeight="bold"
+                    >
                       {persona.name}
                     </Text>
                     <Text color="gray.600" fontSize="sm" mt={1}>
@@ -1295,7 +1496,11 @@ export default function App() {
           </ModalBody>
 
           <ModalFooter gap={3}>
-            <Button isDisabled={isUploading} onClick={handleModalClose} variant="ghost">
+            <Button
+              isDisabled={isUploading}
+              onClick={handleModalClose}
+              variant="ghost"
+            >
               Cancel
             </Button>
             <Button

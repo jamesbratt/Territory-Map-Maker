@@ -144,11 +144,20 @@ export class UploadController {
 
       const postcodeData = await postcodeRepository.find({
         where: uniquePostcodes.map((pcd) => ({ pcd7: pcd })),
-        select: ["pcd7", "lsoa21cd"],
+        select: ["pcd7", "lsoa21cd", "lat", "long"],
       });
 
-      // Create postcode to LSOA lookup map
+      // Create postcode lookup maps
       const lsoaMap = new Map(postcodeData.map((p) => [p.pcd7, p.lsoa21cd]));
+      const coordinateMap = new Map(
+        postcodeData.map((p) => [
+          p.pcd7,
+          {
+            lat: p.lat,
+            long: p.long,
+          },
+        ]),
+      );
 
       // Extract unique LSOA IDs
       const uniqueLSOAs = [
@@ -210,10 +219,13 @@ export class UploadController {
       const enrichedRows = rows.map((row) => {
         const cleanPostcode = row.postcode.replace(/\s+/g, "");
         const lsoaId = lsoaMap.get(cleanPostcode);
+        const coordinates = coordinateMap.get(cleanPostcode);
 
         const enrichedRow: Record<string, any> = {
           ...row.data,
           postcode: row.postcode,
+          lat: coordinates?.lat ?? null,
+          long: coordinates?.long ?? null,
           lsoa_id: lsoaId || null,
           geography: lsoaId ? (geographyByCode.get(lsoaId) ?? null) : null,
           geography_code: lsoaId || null,
