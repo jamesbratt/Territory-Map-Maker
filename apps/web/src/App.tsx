@@ -337,6 +337,8 @@ export default function App() {
     fields.delete("geography");
     fields.delete("geography_code");
     fields.delete("postcode");
+    fields.delete("lat");
+    fields.delete("long");
 
     return [
       "segment",
