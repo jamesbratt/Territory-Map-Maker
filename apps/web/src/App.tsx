@@ -1,5 +1,10 @@
 import { ArrowForwardIcon, AtSignIcon, DownloadIcon } from "@chakra-ui/icons";
 import {
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
   Alert,
   AlertDescription,
   AlertIcon,
@@ -245,6 +250,44 @@ const howItWorksSteps = [
   },
 ] as const;
 
+const frequentlyAskedQuestions = [
+  {
+    question: "What data do I need to upload?",
+    answer:
+      "Upload a CSV containing a column of UK postcodes. Your file can include any additional customer fields you need, and those original columns will be preserved in the enriched export.",
+  },
+  {
+    question: "Are there any file or row limits?",
+    answer:
+      "Yes. Uploads must be CSV files no larger than 5 MB. We process the first 1,000 non-empty data rows in each file, so any additional rows will be ignored.",
+  },
+  {
+    question: "How is the affinity score calculated?",
+    answer:
+      "Each postcode is matched with relevant UK census signals for your chosen persona. Those signals are converted into percentiles and averaged into a score from 0 to 100, where a higher score indicates a stronger match.",
+  },
+  {
+    question: "Does an affinity score describe an individual?",
+    answer:
+      "No. An affinity score reflects the demographic characteristics of the small, highly granular census area associated with a postcode. It indicates how strongly that local area matches the selected persona, but should not be treated as a statement or prediction about any individual person or household.",
+  },
+  {
+    question: "What happens to my uploaded data?",
+    answer:
+      "Your file is used to produce the segmentation results shown in the app. Avoid uploading unnecessary personal or sensitive information; a postcode and your own non-sensitive reference fields are enough. Your data is not stored or shared, and is deleted after processing.",
+  },
+  {
+    question: "Can I use the results in other tools?",
+    answer:
+      "Yes. You can download the enriched results as a CSV and use them in your CRM, campaign planning, mailing workflow, or analytics tools.",
+  },
+  {
+    question: "Which UK areas are supported?",
+    answer:
+      "Segmentbase is designed for valid UK postcodes that can be matched to the available Office for National Statistics census geography and demographic data. Data for Scotland and Northern Ireland is currently not available, but will be coming soon.",
+  },
+] as const;
+
 export default function App() {
   const currentYear = new Date().getFullYear();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -281,6 +324,7 @@ export default function App() {
 
   const resultColumns = useMemo(() => {
     const fields = new Set(uploadRows.flatMap((row) => Object.keys(row)));
+    fields.delete("segment");
     fields.delete("segment_affinity_rank");
     fields.delete("segment_affinity_score");
     fields.delete("censusValues");
@@ -289,7 +333,12 @@ export default function App() {
     fields.delete("geography_code");
     fields.delete("postcode");
 
-    return ["segment_affinity_rank", "segment_affinity_score", ...fields];
+    return [
+      "segment",
+      "segment_affinity_rank",
+      "segment_affinity_score",
+      ...fields,
+    ];
   }, [uploadRows]);
 
   const rankOptions = useMemo(
@@ -492,15 +541,7 @@ export default function App() {
         paint: {
           "circle-color": SEGMENT_RANK_COLOR_EXPRESSION,
           "circle-opacity": 0.78,
-          "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            4,
-            3,
-            12,
-            7,
-          ],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 12, 7],
           "circle-stroke-color": "#ffffff",
           "circle-stroke-opacity": 0.8,
           "circle-stroke-width": 1,
@@ -581,13 +622,17 @@ export default function App() {
       const rows = await uploadCsv(pendingFile, postcodeColumn.trim(), [
         ...persona.variables,
       ]);
+      const rowsWithSegment = rows.map((row) => ({
+        segment: persona.name,
+        ...row,
+      }));
       setUploadResult({
         status: "success",
         message: `${pendingFile.name} uploaded for the ${persona.name} persona. ${rows.length} rows processed.`,
       });
       shouldScrollToResultsRef.current = true;
       setResultsPersonaName(persona.name);
-      setUploadRows(rows);
+      setUploadRows(rowsWithSegment);
       setCurrentPage(1);
       setRankFilter("all");
       setSelectedResultRow(null);
@@ -635,14 +680,15 @@ export default function App() {
           <Heading
             fontSize={{ base: "4xl", md: "6xl" }}
             letterSpacing="-0.025em"
-            lineHeight="1.08"
-            maxW="3xl"
+            lineHeight="1.10"
+            maxW="5xl"
           >
-            Understand the people behind every postcode
+            Segment your audience by UK demographics in seconds
           </Heading>
           <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }} maxW="2xl">
-            Upload customer data, enrich it with census insights, and build
-            clear, actionable audience segments.
+            Split your audience data by personas based on age group, household
+            type, occupation and more. Get actionable insights to inform your
+            marketing strategy and reach the right people.
           </Text>
 
           <Button
@@ -680,7 +726,7 @@ export default function App() {
               letterSpacing="-0.035em"
               mt={2}
             >
-              From postcodes to audience insight
+              From spreadsheet to audience insight
             </Heading>
             <Text color="gray.600" fontSize="lg" maxW="2xl" mt={3} mx="auto">
               Turn a simple customer file into clear, actionable audience
@@ -1240,6 +1286,79 @@ export default function App() {
           </Box>
         )}
       </Container>
+
+      <Box
+        as="section"
+        bg="white"
+        borderTopWidth="1px"
+        py={{ base: 14, md: 20 }}
+      >
+        <Container maxW="4xl">
+          <Box mb={{ base: 8, md: 10 }} textAlign="center">
+            <Text
+              color="brand.600"
+              fontSize="sm"
+              fontWeight="bold"
+              letterSpacing="0.08em"
+              textTransform="uppercase"
+            >
+              FAQ
+            </Text>
+            <Heading
+              fontSize={{ base: "3xl", md: "4xl" }}
+              letterSpacing="-0.025em"
+              mt={2}
+            >
+              Frequently asked questions
+            </Heading>
+            <Text color="gray.600" fontSize="lg" mt={3}>
+              Everything you need to know before segmenting your audience.
+            </Text>
+          </Box>
+
+          <Accordion allowToggle>
+            {frequentlyAskedQuestions.map(({ question, answer }) => (
+              <AccordionItem
+                borderColor="gray.200"
+                borderWidth="1px"
+                key={question}
+                mb={3}
+                rounded="xl"
+                overflow="hidden"
+              >
+                <Heading as="h3">
+                  <AccordionButton
+                    px={{ base: 5, md: 6 }}
+                    py={5}
+                    _expanded={{ bg: "brand.50", color: "brand.800" }}
+                    _hover={{ bg: "gray.50" }}
+                  >
+                    <Box
+                      as="span"
+                      flex="1"
+                      fontSize={{ base: "md", md: "lg" }}
+                      fontWeight="semibold"
+                      textAlign="left"
+                    >
+                      {question}
+                    </Box>
+                    <AccordionIcon boxSize={5} ml={4} />
+                  </AccordionButton>
+                </Heading>
+                <AccordionPanel
+                  color="gray.600"
+                  lineHeight="tall"
+                  px={{ base: 5, md: 6 }}
+                  pb={6}
+                  pt={4}
+                >
+                  {answer}
+                </AccordionPanel>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </Container>
+      </Box>
 
       <Box as="footer" bg="white" borderTopWidth="1px">
         <Container maxW="7xl" py={5}>

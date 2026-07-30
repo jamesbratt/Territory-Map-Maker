@@ -9,6 +9,8 @@ import {
   getRankString,
 } from "../services/census.config";
 
+const MAX_BULK_UPLOAD_ROWS = 1_000;
+
 const parseCsvLine = (line: string): string[] => {
   const values: string[] = [];
   let current = "";
@@ -112,20 +114,22 @@ export class UploadController {
         return;
       }
 
-      // Parse all rows
-      const rows = lines.map((line, rowIndex) => {
-        const values = parseCsvLine(line);
-        return {
-          rowIndex: rowIndex + 2,
-          data: Object.fromEntries(
-            headers.map((header, index) => [
-              header,
-              values[index]?.trim() ?? "",
-            ]),
-          ),
-          postcode: values[postcodeColumnIndex]?.trim() ?? "",
-        };
-      });
+      // Process only the first 1,000 data rows from larger CSV files.
+      const rows = lines
+        .slice(0, MAX_BULK_UPLOAD_ROWS)
+        .map((line, rowIndex) => {
+          const values = parseCsvLine(line);
+          return {
+            rowIndex: rowIndex + 2,
+            data: Object.fromEntries(
+              headers.map((header, index) => [
+                header,
+                values[index]?.trim() ?? "",
+              ]),
+            ),
+            postcode: values[postcodeColumnIndex]?.trim() ?? "",
+          };
+        });
 
       // Validate all rows have postcode
       const invalidRow = rows.find((row) => !row.postcode);
