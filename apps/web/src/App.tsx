@@ -30,6 +30,7 @@ import {
   Progress,
   Select,
   SimpleGrid,
+  Spinner,
   Stack,
   Table,
   TableContainer,
@@ -300,13 +301,17 @@ export default function App() {
   const detailModal = useDisclosure();
   const [postcodeColumn, setPostcodeColumn] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedPostcodeColumn, setUploadedPostcodeColumn] = useState("");
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(
     null,
   );
+  const [resultsPersonaId, setResultsPersonaId] = useState<string | null>(null);
   const [resultsPersonaName, setResultsPersonaName] = useState<string | null>(
     null,
   );
   const [isUploading, setIsUploading] = useState(false);
+  const [isChangingPersona, setIsChangingPersona] = useState(false);
   const [uploadRows, setUploadRows] = useState<Record<string, unknown>[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<
@@ -631,6 +636,9 @@ export default function App() {
         message: `${pendingFile.name} uploaded for the ${persona.name} persona. ${rows.length} rows processed.`,
       });
       shouldScrollToResultsRef.current = true;
+      setUploadedFile(pendingFile);
+      setUploadedPostcodeColumn(postcodeColumn.trim());
+      setResultsPersonaId(persona.id);
       setResultsPersonaName(persona.name);
       setUploadRows(rowsWithSegment);
       setCurrentPage(1);
@@ -646,6 +654,50 @@ export default function App() {
       });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleResultsPersonaChange = async (personaId: string) => {
+    const persona = personas.find(({ id }) => id === personaId);
+    if (!uploadedFile || !persona || persona.id === resultsPersonaId) return;
+
+    const previousPersonaId = resultsPersonaId;
+    setResultsPersonaId(persona.id);
+    setIsUploading(true);
+    setIsChangingPersona(true);
+    setUploadResult(null);
+
+    try {
+      const rows = await uploadCsv(uploadedFile, uploadedPostcodeColumn, [
+        ...persona.variables,
+      ]);
+      const rowsWithSegment = rows.map((row) => ({
+        segment: persona.name,
+        ...row,
+      }));
+
+      setResultsPersonaId(persona.id);
+      setResultsPersonaName(persona.name);
+      setUploadRows(rowsWithSegment);
+      setCurrentPage(1);
+      setRankFilter("all");
+      setSelectedResultRow(null);
+      setUploadResult({
+        status: "success",
+        message: `${uploadedFile.name} reprocessed for the ${persona.name} persona. ${rows.length} rows processed.`,
+      });
+    } catch (error) {
+      setResultsPersonaId(previousPersonaId);
+      setUploadResult({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The file could not be reprocessed.",
+      });
+    } finally {
+      setIsUploading(false);
+      setIsChangingPersona(false);
     }
   };
 
@@ -903,28 +955,59 @@ export default function App() {
             ref={resultsSectionRef}
             scrollMarginTop={8}
           >
+            <Box mb={6} order={-3}>
+              <Heading fontSize="2xl">
+                {resultsPersonaName
+                  ? `${resultsPersonaName} audience results`
+                  : "Audience results"}
+              </Heading>
+              <Text color="gray.600" mt={1}>
+                {rankFilter === "all"
+                  ? `${uploadRows.length} enriched ${
+                      uploadRows.length === 1 ? "record" : "records"
+                    }`
+                  : `${filteredRows.length} of ${uploadRows.length} records`}
+              </Text>
+            </Box>
+
             <Flex
-              align={{ base: "start", sm: "end" }}
+              align={{ base: "stretch", lg: "end" }}
+              direction={{ base: "column", lg: "row" }}
+              gap={3}
               justify="space-between"
               mb={4}
-              direction={{ base: "column", lg: "row" }}
-              gap={2}
               order={-1}
             >
-              <Box>
-                <Heading fontSize="2xl">
-                  {resultsPersonaName
-                    ? `${resultsPersonaName} audience results`
-                    : "Audience results"}
-                </Heading>
-                <Text color="gray.600" mt={1}>
-                  {rankFilter === "all"
-                    ? `${uploadRows.length} enriched ${
-                        uploadRows.length === 1 ? "record" : "records"
-                      }`
-                    : `${filteredRows.length} of ${uploadRows.length} records`}
-                </Text>
-              </Box>
+              <HStack align="flex-end" spacing={2}>
+                <FormControl maxW={{ lg: "240px" }} minW={{ sm: "190px" }}>
+                  <FormLabel fontSize="sm" mb={1}>
+                    Persona
+                  </FormLabel>
+                  <Select
+                    bg="white"
+                    isDisabled={isUploading || !uploadedFile}
+                    onChange={(event) => {
+                      void handleResultsPersonaChange(event.target.value);
+                    }}
+                    value={resultsPersonaId ?? ""}
+                  >
+                    {personas.map((persona) => (
+                      <option key={persona.id} value={persona.id}>
+                        {persona.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Flex align="center" h="40px" justify="center" w={5}>
+                  {isChangingPersona && (
+                    <Spinner
+                      color="brand.500"
+                      label="Loading persona results"
+                      size="sm"
+                    />
+                  )}
+                </Flex>
+              </HStack>
               <Stack
                 direction={{ base: "column", md: "row" }}
                 spacing={3}
@@ -990,6 +1073,13 @@ export default function App() {
                 </Button>
               </Stack>
             </Flex>
+
+            {uploadResult?.status === "error" && (
+              <Alert mb={4} rounded="md" status="error">
+                <AlertIcon />
+                <AlertDescription>{uploadResult.message}</AlertDescription>
+              </Alert>
+            )}
 
             <SimpleGrid
               columns={{ base: 1, lg: 2 }}
@@ -1269,9 +1359,31 @@ export default function App() {
                   >
                     Previous
                   </Button>
-                  <Text fontSize="sm" minW="100px" textAlign="center">
-                    Page {currentPage} of {totalPages}
-                  </Text>
+                  <HStack spacing={2}>
+                    <Text fontSize="sm">Page</Text>
+                    <Select
+                      aria-label="Select results page"
+                      onChange={(event) =>
+                        setCurrentPage(Number(event.target.value))
+                      }
+                      size="sm"
+                      value={currentPage}
+                      w="72px"
+                    >
+                      {Array.from({ length: totalPages }, (_, index) => {
+                        const page = index + 1;
+
+                        return (
+                          <option key={page} value={page}>
+                            {page}
+                          </option>
+                        );
+                      })}
+                    </Select>
+                    <Text fontSize="sm" whiteSpace="nowrap">
+                      of {totalPages}
+                    </Text>
+                  </HStack>
                   <Button
                     isDisabled={currentPage === totalPages}
                     onClick={() => setCurrentPage((page) => page + 1)}
