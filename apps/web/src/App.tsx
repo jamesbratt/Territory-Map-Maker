@@ -432,6 +432,7 @@ export default function App() {
   const shouldScrollToResultsRef = useRef(false);
   const personaModal = useDisclosure();
   const detailModal = useDisclosure();
+  const processingSuccessModal = useDisclosure();
   const [postcodeColumn, setPostcodeColumn] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -456,7 +457,7 @@ export default function App() {
     unknown
   > | null>(null);
   const [uploadResult, setUploadResult] = useState<{
-    status: "success" | "error";
+    status: "error";
     message: string;
   } | null>(null);
 
@@ -776,10 +777,6 @@ export default function App() {
         segment: persona.name,
         ...row,
       }));
-      setUploadResult({
-        status: "success",
-        message: `${pendingFile.name} uploaded for the ${persona.name} persona. ${rows.length} rows processed.`,
-      });
       shouldScrollToResultsRef.current = true;
       setUploadedFile(pendingFile);
       setUploadedPostcodeColumn(postcodeColumn.trim());
@@ -792,6 +789,7 @@ export default function App() {
       setPendingFile(null);
       setSelectedPersonaId(null);
       personaModal.onClose();
+      processingSuccessModal.onOpen();
     } catch (error) {
       setUploadResult({
         status: "error",
@@ -827,10 +825,7 @@ export default function App() {
       setCurrentPage(1);
       setRankFilter("all");
       setSelectedResultRow(null);
-      setUploadResult({
-        status: "success",
-        message: `${uploadedFile.name} reprocessed for the ${persona.name} persona. ${rows.length} rows processed.`,
-      });
+      processingSuccessModal.onOpen();
     } catch (error) {
       setResultsPersonaId(previousPersonaId);
       setUploadResult({
@@ -1175,12 +1170,6 @@ export default function App() {
                 Choose CSV file
               </Button>
 
-              {uploadResult?.status === "success" && (
-                <Alert rounded="md" status="success" variant="subtle">
-                  <AlertIcon />
-                  <AlertDescription>{uploadResult.message}</AlertDescription>
-                </Alert>
-              )}
             </Stack>
           </Box>
         </Box>
@@ -1732,6 +1721,70 @@ export default function App() {
           </Stack>
         </Container>
       </Box>
+
+      <Modal
+        isCentered
+        isOpen={processingSuccessModal.isOpen}
+        onClose={processingSuccessModal.onClose}
+        returnFocusOnClose={false}
+        size="lg"
+      >
+        <ModalOverlay />
+        <ModalContent mx={4} overflow="hidden">
+          <Box
+            bgGradient="linear(to-br, brand.50, purple.50)"
+            px={{ base: 6, md: 10 }}
+            py={{ base: 8, md: 10 }}
+            textAlign="center"
+          >
+            <Text fontSize="5xl" lineHeight="1" role="img" aria-label="Party and rocket">
+              🎉 🚀
+            </Text>
+            <Heading fontSize={{ base: "2xl", md: "3xl" }} mt={5}>
+              Your audience is ready!
+            </Heading>
+            <Text color="gray.600" mt={3}>
+              We found a high-fit group worth putting at the front of your next
+              campaign.
+            </Text>
+
+            <Box bg="white" boxShadow="sm" mt={6} p={5} rounded="xl">
+              <Heading color="brand.700" fontSize="4xl">
+                {highRankingSummary.percentage}%
+              </Heading>
+              <Text color="gray.700" fontWeight="semibold" mt={1}>
+                {highRankingSummary.count} of {uploadRows.length}{" "}
+                {uploadRows.length === 1 ? "contact ranks" : "contacts rank"}{" "}
+                in the top 30% for {resultsPersonaName ?? "this audience"}
+              </Text>
+            </Box>
+
+            <Text color="gray.600" fontSize="sm" lineHeight="tall" mt={5}>
+              Start with these contacts in your next email, direct-mail or sales
+              campaign, then export the enriched CSV to put the insight to work.
+            </Text>
+          </Box>
+          <ModalFooter justifyContent="center" py={5}>
+            <Button
+              colorScheme="brand"
+              onClick={() => {
+                processingSuccessModal.onClose();
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    resultsSectionRef.current?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  });
+                });
+              }}
+              rightIcon={<ArrowForwardIcon />}
+            >
+              Explore your results
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <Modal
         isCentered
