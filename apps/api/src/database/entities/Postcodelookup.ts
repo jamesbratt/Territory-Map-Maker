@@ -23,4 +23,7 @@ export class PostcodeLookup {
 
   @Column({ type: "varchar", length: 150 })
   lsoa21cd!: string;
+
+  @Column({ type: "varchar", length: 150, nullable: true })
+  msoa21cd!: string | null;
 }
