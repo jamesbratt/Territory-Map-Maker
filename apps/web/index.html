@@ -10,19 +10,23 @@
     />
     <title>UK Audience Segmentation with Census Data | Segmentbase</title>
   </head>
-  <!-- Google tag (gtag.js) -->
-  <script
-    async
-    src="https://www.googletagmanager.com/gtag/js?id=G-CPR9DCKP8L"
-  ></script>
   <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() {
-      dataLayer.push(arguments);
-    }
-    gtag("js", new Date());
+    const localHosts = ["localhost", "127.0.0.1", "::1"];
 
-    gtag("config", "G-CPR9DCKP8L");
+    if (!localHosts.includes(window.location.hostname)) {
+      const googleTagScript = document.createElement("script");
+      googleTagScript.async = true;
+      googleTagScript.src =
+        "https://www.googletagmanager.com/gtag/js?id=G-CPR9DCKP8L";
+      document.head.appendChild(googleTagScript);
+
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () {
+        window.dataLayer.push(arguments);
+      };
+      window.gtag("js", new Date());
+      window.gtag("config", "G-CPR9DCKP8L");
+    }
   </script>
   <body>
     <div id="root"></div>

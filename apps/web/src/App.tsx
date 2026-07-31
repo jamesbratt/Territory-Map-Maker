@@ -1,4 +1,11 @@
-import { ArrowForwardIcon, AtSignIcon, DownloadIcon } from "@chakra-ui/icons";
+import {
+  ArrowForwardIcon,
+  AtSignIcon,
+  CalendarIcon,
+  DownloadIcon,
+  EmailIcon,
+  Search2Icon,
+} from "@chakra-ui/icons";
 import {
   Accordion,
   AccordionButton,
@@ -84,6 +91,22 @@ const SEGMENT_RANK_COLORS: Record<string, string> = {
   "bottom 10%": "#991b1b",
 };
 const UNRANKED_COLOR = "#64748b";
+
+type AnalyticsWindow = Window & {
+  gtag?: (
+    command: "event",
+    eventName: string,
+    parameters?: Record<string, string | number>,
+  ) => void;
+};
+
+function trackAnalyticsEvent(
+  eventName: string,
+  parameters?: Record<string, string | number>,
+) {
+  (window as AnalyticsWindow).gtag?.("event", eventName, parameters);
+}
+
 const SEGMENT_RANK_COLOR_EXPRESSION: ExpressionSpecification = [
   "match",
   ["get", "rank"],
@@ -116,6 +139,17 @@ function getAffinityColor(score: number): string {
   if (score >= 40) return "blue";
   if (score >= 20) return "orange";
   return "red";
+}
+
+function formatCensusSignal(signal: string): string {
+  const ageRange = signal.match(/^age_(\d+)_(\d+)$/);
+  if (ageRange) return `Age ${ageRange[1]}–${ageRange[2]}`;
+
+  const ageAndOver = signal.match(/^age_(\d+)_plus$/);
+  if (ageAndOver) return `Age ${ageAndOver[1]}+`;
+
+  const label = signal.replaceAll("_", " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function formatCsvCell(value: unknown): string {
@@ -251,6 +285,45 @@ const howItWorksSteps = [
   },
 ] as const;
 
+const useCases = [
+  {
+    title: "Plan campaigns with confidence",
+    description:
+      "Stop wasting budget targeting audiences based on guesswork. Rank your customer data by demographic fit before launch, so you know who to prioritise, where to focus spend and which segments to leave out.",
+    callToAction: "Plan a campaign",
+    icon: CalendarIcon,
+    accent: "brand.500",
+    background: "brand.50",
+  },
+  {
+    title: "Make direct mail spend count",
+    description:
+      "Stop paying to print and post to low-fit households. Prioritise addresses with the strongest demographic match, build more focused mailing lists and put your budget behind the people most likely to respond.",
+    callToAction: "Build a mailing list",
+    icon: EmailIcon,
+    accent: "purple.500",
+    background: "purple.50",
+  },
+  {
+    title: "Prioritise the right leads",
+    description:
+      "Stop treating every lead as equally valuable. Add demographic-fit scores to your existing lead data, so sales teams can focus their time on the prospects most likely to match your ideal customer profile.",
+    callToAction: "Score your leads",
+    icon: Search2Icon,
+    accent: "blue.500",
+    background: "blue.50",
+  },
+  {
+    title: "Send more relevant emails",
+    description:
+      "Stop sending the same message to everyone and hoping it lands. Segment your contact list by demographic fit to target campaigns more precisely, tailor your messaging and give every email a better chance of converting.",
+    callToAction: "Segment your emails",
+    icon: AtSignIcon,
+    accent: "orange.500",
+    background: "orange.50",
+  },
+] as const;
+
 const frequentlyAskedQuestions = [
   {
     question: "What data do I need to upload?",
@@ -316,7 +389,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<
     "none" | "ascending" | "descending"
-  >("none");
+  >("descending");
   const [rankFilter, setRankFilter] = useState("all");
   const [selectedResultRow, setSelectedResultRow] = useState<Record<
     string,
@@ -381,55 +454,6 @@ export default function App() {
           ),
     [rankFilter, uploadRows],
   );
-  const audienceSummary = useMemo(() => {
-    const scoredRows = uploadRows
-      .map((row) => ({
-        row,
-        score: Number(row.segment_affinity_score),
-      }))
-      .filter(({ score }) => Number.isFinite(score));
-    const averageScore =
-      scoredRows.length > 0
-        ? scoredRows.reduce((total, { score }) => total + score, 0) /
-          scoredRows.length
-        : null;
-    const highAffinityCount = scoredRows.filter(
-      ({ score }) => score >= 60,
-    ).length;
-    const primeProspectCount = scoredRows.filter(
-      ({ score }) => score >= 80,
-    ).length;
-    const strongestResult = scoredRows.reduce<
-      (typeof scoredRows)[number] | null
-    >(
-      (strongest, result) =>
-        strongest === null || result.score > strongest.score
-          ? result
-          : strongest,
-      null,
-    );
-    const strongestLocation =
-      strongestResult?.row.geography ??
-      strongestResult?.row.postcode ??
-      strongestResult?.row.geography_code;
-
-    return {
-      averageScore,
-      highAffinityCount,
-      highAffinityPercentage:
-        scoredRows.length > 0
-          ? Math.round((highAffinityCount / scoredRows.length) * 100)
-          : 0,
-      primeProspectCount,
-      primeProspectPercentage:
-        scoredRows.length > 0
-          ? Math.round((primeProspectCount / scoredRows.length) * 100)
-          : 0,
-      strongestLocation:
-        strongestLocation == null ? "Not available" : String(strongestLocation),
-      strongestScore: strongestResult?.score ?? null,
-    };
-  }, [uploadRows]);
   const totalPages = Math.ceil(filteredRows.length / RESULTS_PER_PAGE);
   const pageStart = (currentPage - 1) * RESULTS_PER_PAGE;
   const sortedRows = useMemo(() => {
@@ -468,6 +492,48 @@ export default function App() {
   const selectedAffinityColor = selectedHasScore
     ? getAffinityColor(selectedScore)
     : "gray";
+  const resultsPersona = personas.find(
+    (persona) => persona.id === resultsPersonaId,
+  );
+  const resultsPersonaSignals = useMemo(() => {
+    const censusValues = uploadRows[0]?.censusValues;
+
+    return (resultsPersona?.variables ?? []).map((signal) => {
+      const signalData = Array.isArray(censusValues)
+        ? censusValues.find(
+            (entry): entry is Record<string, unknown> =>
+              typeof entry === "object" &&
+              entry !== null &&
+              Object.prototype.hasOwnProperty.call(entry, signal),
+          )
+        : undefined;
+
+      return {
+        key: signal,
+        label: String(
+          signalData?.[`${signal}_friendly_label`] ??
+            formatCensusSignal(signal),
+        ),
+        category: String(
+          signalData?.[`${signal}_category_name`] ?? "Census signal",
+        ),
+      };
+    });
+  }, [resultsPersona, uploadRows]);
+  const highRankingSummary = useMemo(() => {
+    const highRanks = new Set(["top 10%", "top 20%", "top 30%"]);
+    const count = uploadRows.filter((row) =>
+      highRanks.has(String(row.segment_affinity_rank).toLowerCase()),
+    ).length;
+
+    return {
+      count,
+      percentage:
+        uploadRows.length === 0
+          ? 0
+          : Math.round((count / uploadRows.length) * 100),
+    };
+  }, [uploadRows]);
 
   useEffect(() => {
     if (!shouldScrollToResultsRef.current || uploadRows.length === 0) return;
@@ -582,6 +648,11 @@ export default function App() {
   const exportVisibleRows = () => {
     if (sortedRows.length === 0) return;
 
+    trackAnalyticsEvent("csv_export_click", {
+      exported_row_count: sortedRows.length,
+      persona: resultsPersonaName ?? "unknown",
+    });
+
     const csv = [
       resultColumns.map(formatCsvCell).join(","),
       ...sortedRows.map((row) =>
@@ -618,9 +689,21 @@ export default function App() {
     personaModal.onClose();
   };
 
+  const scrollToUpload = () => {
+    postcodeInputRef.current?.focus({ preventScroll: true });
+    uploadSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+
   const handleUpload = async () => {
     const persona = personas.find(({ id }) => id === selectedPersonaId);
     if (!pendingFile || !persona) return;
+
+    trackAnalyticsEvent("csv_upload_click", {
+      persona: persona.name,
+    });
 
     setIsUploading(true);
     setUploadResult(null);
@@ -737,12 +820,12 @@ export default function App() {
             lineHeight="1.10"
             maxW="5xl"
           >
-            Segment your audience by UK demographics in seconds
+            Prioritise your UK audience by demographic fit
           </Heading>
           <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }} maxW="2xl">
-            Split your audience data by personas based on age group, household
-            type, occupation and more. Get actionable insights to inform your
-            marketing strategy and reach the right people.
+            Segment your audience data by personas based on age group, household
+            type, occupation and more, so you can focus your marketing on
+            audiences most likely to convert
           </Text>
 
           <Button
@@ -751,11 +834,10 @@ export default function App() {
             href="#upload"
             onClick={(event) => {
               event.preventDefault();
-              postcodeInputRef.current?.focus({ preventScroll: true });
-              uploadSectionRef.current?.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
+              trackAnalyticsEvent("try_now_click", {
+                button_location: "hero",
               });
+              scrollToUpload();
             }}
             rightIcon={<ArrowForwardIcon />}
             size="lg"
@@ -763,6 +845,100 @@ export default function App() {
             Try now
           </Button>
         </Stack>
+
+        <Box as="section" mt={{ base: 20, md: 28 }}>
+          <Text
+            color="brand.600"
+            fontSize="sm"
+            fontWeight="semibold"
+            letterSpacing="0.08em"
+            textAlign="center"
+            textTransform="uppercase"
+          >
+            Use cases
+          </Text>
+          <Heading
+            fontSize={{ base: "3xl", md: "4xl" }}
+            letterSpacing="-0.035em"
+            mt={2}
+            textAlign="center"
+          >
+            How can Segmentbase help you?
+          </Heading>
+          <Text
+            color="gray.600"
+            fontSize="lg"
+            maxW="2xl"
+            mb={{ base: 8, md: 10 }}
+            mt={3}
+            mx="auto"
+            textAlign="center"
+          >
+            Reduce wasted spend, focus your budget on the right audiences and
+            increase ROI across every campaign.
+          </Text>
+
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+            {useCases.map((useCase) => (
+              <Box
+                bg="white"
+                borderColor="gray.200"
+                borderWidth="1px"
+                display="flex"
+                flexDirection="column"
+                key={useCase.title}
+                p={{ base: 6, md: 8 }}
+                position="relative"
+                rounded="2xl"
+                shadow="sm"
+                transition="transform 0.2s ease, box-shadow 0.2s ease"
+                _hover={{
+                  shadow: "lg",
+                  transform: "translateY(-4px)",
+                }}
+              >
+                <Flex
+                  align="center"
+                  bg={useCase.background}
+                  color={useCase.accent}
+                  h={12}
+                  justify="center"
+                  mb={6}
+                  rounded="xl"
+                  w={12}
+                >
+                  <Icon as={useCase.icon} boxSize={5} />
+                </Flex>
+                <Heading fontSize="2xl" letterSpacing="-0.025em">
+                  {useCase.title}
+                </Heading>
+                <Text color="gray.600" lineHeight="tall" mt={3}>
+                  {useCase.description}
+                </Text>
+                <Flex justify="flex-end" mt="auto" pt={6}>
+                  <Button
+                    as="a"
+                    colorScheme="brand"
+                    href="#upload"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      trackAnalyticsEvent("use_case_cta_click", {
+                        use_case: useCase.title,
+                        cta_label: useCase.callToAction,
+                      });
+                      scrollToUpload();
+                    }}
+                    rightIcon={<ArrowForwardIcon />}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    {useCase.callToAction}
+                  </Button>
+                </Flex>
+              </Box>
+            ))}
+          </SimpleGrid>
+        </Box>
 
         <Box as="section" mt={{ base: 24, md: 32 }}>
           <Box mb={{ base: 8, md: 10 }} textAlign="center">
@@ -916,7 +1092,7 @@ export default function App() {
                 <FormLabel fontSize="sm">Postcode column</FormLabel>
                 <Input
                   onChange={(event) => setPostcodeColumn(event.target.value)}
-                  placeholder="Enter your postcode column name, e.g. customer_postcode"
+                  placeholder="Enter the column name that contains post codes"
                   ref={postcodeInputRef}
                   value={postcodeColumn}
                 />
@@ -957,21 +1133,6 @@ export default function App() {
             ref={resultsSectionRef}
             scrollMarginTop={8}
           >
-            <Box mb={6} order={-3}>
-              <Heading fontSize="2xl">
-                {resultsPersonaName
-                  ? `${resultsPersonaName} audience results`
-                  : "Audience results"}
-              </Heading>
-              <Text color="gray.600" mt={1}>
-                {rankFilter === "all"
-                  ? `${uploadRows.length} enriched ${
-                      uploadRows.length === 1 ? "record" : "records"
-                    }`
-                  : `${filteredRows.length} of ${uploadRows.length} records`}
-              </Text>
-            </Box>
-
             <Flex
               align={{ base: "stretch", lg: "end" }}
               direction={{ base: "column", lg: "row" }}
@@ -1089,70 +1250,88 @@ export default function App() {
               order={-2}
               spacing={{ base: 4, lg: 8 }}
             >
-              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
-                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
-                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
-                    Average persona affinity
-                  </Text>
-                  <Heading fontSize="3xl" mt={2}>
-                    {audienceSummary.averageScore === null
-                      ? "—"
-                      : Math.round(audienceSummary.averageScore)}
-                  </Heading>
-                  <Text color="gray.600" fontSize="sm" mt={1}>
-                    Average match to the {resultsPersonaName ?? "selected"}{" "}
-                    persona
-                  </Text>
-                </Box>
+              <Box
+                bg="white"
+                borderWidth="1px"
+                minH="320px"
+                overflow="hidden"
+                rounded="xl"
+              >
+                <Flex
+                  align={{ base: "stretch", sm: "center" }}
+                  borderBottomWidth="1px"
+                  direction={{ base: "column", sm: "row" }}
+                  gap={5}
+                  justify="space-between"
+                  p={{ base: 5, md: 6 }}
+                >
+                  <Box>
+                    <Text
+                      color="brand.600"
+                      fontSize="xs"
+                      fontWeight="bold"
+                      letterSpacing="0.08em"
+                      textTransform="uppercase"
+                    >
+                      Audience
+                    </Text>
+                    <Heading fontSize={{ base: "2xl", md: "3xl" }} mt={1}>
+                      {resultsPersonaName ?? "Selected audience"}
+                    </Heading>
+                    <Text color="gray.600" fontSize="sm" mt={2}>
+                      This audience is composed of the following census signals.
+                    </Text>
+                  </Box>
 
-                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
-                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
-                    Strong persona matches
-                  </Text>
-                  <Heading fontSize="3xl" mt={2}>
-                    {audienceSummary.highAffinityPercentage}%
-                  </Heading>
-                  <Text color="gray.600" fontSize="sm" mt={1}>
-                    {audienceSummary.highAffinityCount} potential customers
-                    scoring 60+
-                  </Text>
-                </Box>
-
-                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
-                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
-                    Priority prospects
-                  </Text>
-                  <Heading fontSize="3xl" mt={2}>
-                    {audienceSummary.primeProspectPercentage}%
-                  </Heading>
-                  <Text color="gray.600" fontSize="sm" mt={1}>
-                    {audienceSummary.primeProspectCount} high-priority customers
-                    scoring 80+
-                  </Text>
-                </Box>
-
-                <Box bg="white" borderWidth="1px" p={5} rounded="xl">
-                  <Text color="gray.500" fontSize="sm" fontWeight="semibold">
-                    Strongest persona location
-                  </Text>
-                  <Heading
-                    fontSize="xl"
-                    mt={2}
-                    overflow="hidden"
-                    textOverflow="ellipsis"
-                    whiteSpace="nowrap"
+                  <Box
+                    bg="brand.50"
+                    flexShrink={0}
+                    minW={{ sm: "150px" }}
+                    p={4}
+                    rounded="xl"
+                    textAlign={{ base: "left", sm: "center" }}
                   >
-                    {audienceSummary.strongestLocation}
-                  </Heading>
-                  <Text color="gray.600" fontSize="sm" mt={1}>
-                    {audienceSummary.strongestScore === null
-                      ? "No score available"
-                      : `Affinity score ${Math.round(
-                          audienceSummary.strongestScore,
-                        )}`}
-                  </Text>
-                </Box>
-              </SimpleGrid>
+                    <Heading color="brand.700" fontSize="3xl">
+                      {highRankingSummary.percentage}%
+                    </Heading>
+                    <Text color="brand.800" fontSize="xs" fontWeight="semibold">
+                      {highRankingSummary.count} rows rank in the top 30%
+                    </Text>
+                  </Box>
+                </Flex>
+
+                <SimpleGrid
+                  columns={{ base: 1, sm: 2 }}
+                  p={{ base: 5, md: 6 }}
+                  spacing={3}
+                >
+                  {resultsPersonaSignals.map((signal) => (
+                    <HStack
+                      bg="gray.50"
+                      borderWidth="1px"
+                      key={signal.key}
+                      p={3}
+                      rounded="lg"
+                      spacing={3}
+                    >
+                      <Box
+                        bg="brand.500"
+                        borderRadius="full"
+                        boxSize="8px"
+                        flexShrink={0}
+                      />
+                      <Box>
+                        <Text fontSize="sm" fontWeight="medium">
+                          {signal.label}
+                        </Text>
+                        <Text color="gray.500" fontSize="xs" mt={0.5}>
+                          {signal.category}
+                        </Text>
+                      </Box>
+                    </HStack>
+                  ))}
+                </SimpleGrid>
+              </Box>
               <Box
                 borderWidth="1px"
                 minH={{ base: "320px", lg: "unset" }}
