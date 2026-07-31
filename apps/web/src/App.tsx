@@ -262,6 +262,66 @@ const personas = [
       "owned_outright",
     ],
   },
+  {
+    id: "small-business-owners",
+    name: "Small business owners",
+    description:
+      "Entrepreneurial adults running businesses or working on their own account.",
+    variables: [
+      "age_35_44",
+      "small_employers_own_account",
+      "active_excl_students_self_emp_with_employees",
+      "owned_mortgage_or_loan",
+    ],
+  },
+  {
+    id: "skilled-tradespeople",
+    name: "Skilled tradespeople",
+    description:
+      "Working households with strong representation in skilled and technical roles.",
+    variables: [
+      "age_35_44",
+      "occ_5_skilled",
+      "lower_supervisory_technical",
+      "two_cars_or_vans",
+    ],
+  },
+  {
+    id: "urban-renters",
+    name: "Urban renters",
+    description:
+      "Younger private renters living in flats with car-light urban lifestyles.",
+    variables: [
+      "age_25_34",
+      "private_rented_landlord_or_agency",
+      "purpose_built_flat",
+      "no_cars_or_vans",
+    ],
+  },
+  {
+    id: "established-couples",
+    name: "Established couples",
+    description:
+      "Mature couples without dependent children in settled, asset-rich households.",
+    variables: [
+      "age_55_64",
+      "single_family_household_married_civil_partnership_no_children",
+      "owned_outright",
+      "two_cars_or_vans",
+    ],
+  },
+  {
+    id: "senior-decision-makers",
+    name: "Senior decision makers",
+    description:
+      "Experienced professionals in management and senior leadership roles.",
+    variables: [
+      "age_45_54",
+      "occ_1_managers",
+      "higher_managerial_professional",
+      "qualification_level_4_plus",
+    ],
+  },
 ] as const;
 
 const howItWorksSteps = [
@@ -956,11 +1016,11 @@ export default function App() {
               letterSpacing="-0.035em"
               mt={2}
             >
-              From spreadsheet to audience insight
+              From a postcode to audience insight
             </Heading>
             <Text color="gray.600" fontSize="lg" maxW="2xl" mt={3} mx="auto">
-              Turn a simple customer file into clear, actionable audience
-              intelligence in three straightforward steps.
+              Turn a simple spreadsheet of customer postcodes into clear,
+              actionable audience intelligence in three straightforward steps.
             </Text>
           </Box>
 
