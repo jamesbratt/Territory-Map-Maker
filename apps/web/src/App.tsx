@@ -164,6 +164,25 @@ function formatCsvCell(value: unknown): string {
   return `"${safeValue.replaceAll('"', '""')}"`;
 }
 
+const gbpFormatter = new Intl.NumberFormat("en-GB", {
+  style: "currency",
+  currency: "GBP",
+  maximumFractionDigits: 0,
+});
+
+function formatCensusDetailValue(value: unknown, category: unknown): string {
+  if (value === null || value === undefined) return "—";
+
+  if (category === "Household Income") {
+    const incomeInThousands = Number(value);
+    if (Number.isFinite(incomeInThousands)) {
+      return gbpFormatter.format(incomeInThousands * 1_000);
+    }
+  }
+
+  return String(value);
+}
+
 function getCensusDetails(row: Record<string, unknown>) {
   if (!Array.isArray(row.censusValues)) return [];
 
@@ -215,6 +234,7 @@ const personas = [
       "higher_managerial_professional",
       "qualification_level_4_plus",
       "private_rented_total",
+      "annual_income_before_costs_high",
     ],
   },
   {
@@ -238,6 +258,7 @@ const personas = [
       "higher_managerial_professional",
       "owned_outright",
       "detached",
+      "annual_income_after_costs_high",
     ],
   },
   {
@@ -249,6 +270,7 @@ const personas = [
       "full_time_students",
       "purpose_built_flat",
       "no_cars_or_vans",
+      "annual_income_after_costs_low",
     ],
   },
   {
@@ -260,6 +282,7 @@ const personas = [
       "age_75_plus",
       "inactive_retired",
       "owned_outright",
+      "annual_income_after_costs_high",
     ],
   },
   {
@@ -308,6 +331,7 @@ const personas = [
       "single_family_household_married_civil_partnership_no_children",
       "owned_outright",
       "two_cars_or_vans",
+      "annual_income_after_costs_high",
     ],
   },
   {
@@ -320,6 +344,7 @@ const personas = [
       "occ_1_managers",
       "higher_managerial_professional",
       "qualification_level_4_plus",
+      "annual_income_before_costs_high",
     ],
   },
 ] as const;
@@ -879,8 +904,8 @@ export default function App() {
           </Heading>
           <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }} maxW="2xl">
             Segment your audience data by personas based on age group, household
-            type, occupation and more, so you can focus your marketing on
-            audiences most likely to convert
+            type, occupation, household income and more, so you can focus your
+            marketing on audiences most likely to convert
           </Text>
 
           <Button
@@ -1169,7 +1194,6 @@ export default function App() {
               >
                 Choose CSV file
               </Button>
-
             </Stack>
           </Box>
         </Box>
@@ -1737,7 +1761,12 @@ export default function App() {
             py={{ base: 8, md: 10 }}
             textAlign="center"
           >
-            <Text fontSize="5xl" lineHeight="1" role="img" aria-label="Party and rocket">
+            <Text
+              fontSize="5xl"
+              lineHeight="1"
+              role="img"
+              aria-label="Party and rocket"
+            >
               🎉 🚀
             </Text>
             <Heading fontSize={{ base: "2xl", md: "3xl" }} mt={5}>
@@ -1754,8 +1783,8 @@ export default function App() {
               </Heading>
               <Text color="gray.700" fontWeight="semibold" mt={1}>
                 {highRankingSummary.count} of {uploadRows.length}{" "}
-                {uploadRows.length === 1 ? "contact ranks" : "contacts rank"}{" "}
-                in the top 30% for {resultsPersonaName ?? "this audience"}
+                {uploadRows.length === 1 ? "contact ranks" : "contacts rank"} in
+                the top 30% for {resultsPersonaName ?? "this audience"}
               </Text>
             </Box>
 
@@ -1896,7 +1925,10 @@ export default function App() {
                           Census count
                         </Text>
                         <Text fontWeight="semibold" mt={1}>
-                          {detail.value == null ? "—" : String(detail.value)}
+                          {formatCensusDetailValue(
+                            detail.value,
+                            detail.category,
+                          )}
                         </Text>
                       </Box>
                       <Box>

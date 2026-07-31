@@ -148,11 +148,12 @@ export class UploadController {
 
       const postcodeData = await postcodeRepository.find({
         where: uniquePostcodes.map((pcd) => ({ pcd7: pcd })),
-        select: ["pcd7", "lsoa21cd", "lat", "long"],
+        select: ["pcd7", "lsoa21cd", "msoa21cd", "lat", "long"],
       });
 
       // Create postcode lookup maps
       const lsoaMap = new Map(postcodeData.map((p) => [p.pcd7, p.lsoa21cd]));
+      const msoaMap = new Map(postcodeData.map((p) => [p.pcd7, p.msoa21cd]));
       const coordinateMap = new Map(
         postcodeData.map((p) => [
           p.pcd7,
@@ -169,6 +170,13 @@ export class UploadController {
           Array.from(lsoaMap.values()).filter((lsoa) => lsoa !== null),
         ),
       ] as string[];
+      const uniqueMSOAs = [
+        ...new Set(
+          Array.from(msoaMap.values()).filter(
+            (msoa): msoa is string => msoa !== null,
+          ),
+        ),
+      ];
 
       // Fetch data for all requested census variables
       const censusDataByVariable: Record<
@@ -180,19 +188,34 @@ export class UploadController {
       for (const variableKey of censusVariables) {
         const config = CENSUS_VARIABLES[variableKey];
         const repository = AppDataSource.getRepository(config.entity);
+        const areaCodes =
+          config.geographyLevel === "msoa" ? uniqueMSOAs : uniqueLSOAs;
+        const selectedProperties = [
+          config.areaCodeProperty,
+          config.columnProperty,
+          ...(config.geographyProperty ? [config.geographyProperty] : []),
+        ];
 
-        // Fetch population data for this variable
-        const variableData = await repository.find({
-          where: uniqueLSOAs.map((lsoa) => ({ geographyCode: lsoa })),
-          select: ["geography", "geographyCode", config.columnProperty],
-        });
+        const variableData =
+          areaCodes.length > 0
+            ? await repository.find({
+                where: areaCodes.map((areaCode) => ({
+                  [config.areaCodeProperty]: areaCode,
+                })),
+                select: selectedProperties,
+              })
+            : [];
 
-        for (const censusRow of variableData) {
+        for (const censusRow of variableData as Record<string, any>[]) {
           if (
-            typeof censusRow.geographyCode === "string" &&
-            typeof censusRow.geography === "string"
+            config.geographyProperty &&
+            typeof censusRow[config.areaCodeProperty] === "string" &&
+            typeof censusRow[config.geographyProperty] === "string"
           ) {
-            geographyByCode.set(censusRow.geographyCode, censusRow.geography);
+            geographyByCode.set(
+              censusRow[config.areaCodeProperty],
+              censusRow[config.geographyProperty],
+            );
           }
         }
 
@@ -211,7 +234,7 @@ export class UploadController {
         censusDataByVariable[variableKey] = {
           data: new Map(
             variableData.map((p) => [
-              p.geographyCode,
+              p[config.areaCodeProperty],
               p[config.columnProperty] as number,
             ]),
           ),
@@ -223,6 +246,7 @@ export class UploadController {
       const enrichedRows = rows.map((row) => {
         const cleanPostcode = row.postcode.replace(/\s+/g, "");
         const lsoaId = lsoaMap.get(cleanPostcode);
+        const msoaId = msoaMap.get(cleanPostcode);
         const coordinates = coordinateMap.get(cleanPostcode);
 
         const enrichedRow: Record<string, any> = {
@@ -241,23 +265,31 @@ export class UploadController {
         for (const variableKey of censusVariables) {
           const config = CENSUS_VARIABLES[variableKey];
           const { data, allValues } = censusDataByVariable[variableKey];
-          const value = lsoaId ? (data.get(lsoaId) ?? null) : null;
-          const percentile = calculatePercentile(
+          const areaCode =
+            config.geographyLevel === "msoa" ? msoaId : lsoaId;
+          const value = areaCode ? (data.get(areaCode) ?? null) : null;
+          const rawPercentile = calculatePercentile(
             value as number | null,
             allValues,
           );
-          const rank = getRankString(percentile);
+          const affinity =
+            rawPercentile === null
+              ? null
+              : config.direction === "lower"
+                ? 100 - rawPercentile
+                : rawPercentile;
+          const rank = getRankString(affinity);
 
           censusValues.push({
             [variableKey]: value,
-            [`${variableKey}_affinity`]: percentile,
+            [`${variableKey}_affinity`]: affinity,
             [`${variableKey}_rank`]: rank,
             [`${variableKey}_friendly_label`]: config.displayName,
             [`${variableKey}_category_name`]: config.categoryName,
           });
 
-          if (percentile !== null) {
-            percentiles.push(percentile);
+          if (affinity !== null) {
+            percentiles.push(affinity);
           }
         }
 

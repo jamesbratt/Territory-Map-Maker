@@ -9,12 +9,17 @@ import { HouseholdTenure } from "../database/entities/HouseholdTenure";
 import { EconomicActivity } from "../database/entities/EconomicActivity";
 import { AccommodationType } from "../database/entities/AccommodationType";
 import { QualificationLevel } from "../database/entities/QualificationLevel";
+import { HouseholdIncome } from "../database/entities/HouseholdIncome";
 
 // Define available census variables
 export interface CensusVariableConfig {
   key: string;
   entity: EntityTarget<any>;
   columnProperty: keyof any;
+  areaCodeProperty: string;
+  geographyLevel: "lsoa" | "msoa";
+  geographyProperty?: string;
+  direction: "higher" | "lower";
   displayName: string;
   categoryName: string;
 }
@@ -30,10 +35,25 @@ const censusCategoryNames = new Map<EntityTarget<any>, string>([
   [EconomicActivity, "Economic Activity"],
   [AccommodationType, "Accommodation Type"],
   [QualificationLevel, "Qualifications"],
+  [HouseholdIncome, "Household Income"],
 ]);
 
 const censusVariableDefinitions: Array<
-  [string, EntityTarget<any>, string, string]
+  [
+    string,
+    EntityTarget<any>,
+    string,
+    string,
+    Partial<
+      Pick<
+        CensusVariableConfig,
+        | "areaCodeProperty"
+        | "geographyLevel"
+        | "geographyProperty"
+        | "direction"
+      >
+    >?,
+  ]
 > = [
   ["under_18", PopulationByAgeBand, "under18", "Under 18"],
   ["age_18_24", PopulationByAgeBand, "age1824", "Age 18-24"],
@@ -586,15 +606,57 @@ const censusVariableDefinitions: Array<
     "otherQualifications",
     "Other Qualifications",
   ],
+
+  [
+    "annual_income_before_costs_high",
+    HouseholdIncome,
+    "annualIncomeBeforeCosts",
+    "Higher Annual Household Income Before Housing Costs",
+    { areaCodeProperty: "msoa21cd", geographyLevel: "msoa" },
+  ],
+  [
+    "annual_income_before_costs_low",
+    HouseholdIncome,
+    "annualIncomeBeforeCosts",
+    "Lower Annual Household Income Before Housing Costs",
+    {
+      areaCodeProperty: "msoa21cd",
+      geographyLevel: "msoa",
+      direction: "lower",
+    },
+  ],
+  [
+    "annual_income_after_costs_high",
+    HouseholdIncome,
+    "annualIncomeAfterCosts",
+    "Higher Annual Household Income After Housing Costs",
+    { areaCodeProperty: "msoa21cd", geographyLevel: "msoa" },
+  ],
+  [
+    "annual_income_after_costs_low",
+    HouseholdIncome,
+    "annualIncomeAfterCosts",
+    "Lower Annual Household Income After Housing Costs",
+    {
+      areaCodeProperty: "msoa21cd",
+      geographyLevel: "msoa",
+      direction: "lower",
+    },
+  ],
 ];
 
 export const CENSUS_VARIABLES =
   censusVariableDefinitions.reduce<Record<string, CensusVariableConfig>>(
-    (variables, [key, entity, columnProperty, displayName]) => {
+    (variables, [key, entity, columnProperty, displayName, areaConfig]) => {
       variables[key] = {
         key,
         entity,
         columnProperty,
+        areaCodeProperty: areaConfig?.areaCodeProperty ?? "geographyCode",
+        geographyLevel: areaConfig?.geographyLevel ?? "lsoa",
+        geographyProperty: areaConfig?.geographyProperty ??
+          (areaConfig?.geographyLevel === "msoa" ? undefined : "geography"),
+        direction: areaConfig?.direction ?? "higher",
         displayName,
         categoryName: censusCategoryNames.get(entity) ?? "Other",
       };
