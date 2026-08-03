@@ -3,6 +3,8 @@ import {
   AtSignIcon,
   CalendarIcon,
   CheckCircleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   DownloadIcon,
   EmailIcon,
   Search2Icon,
@@ -28,6 +30,7 @@ import {
   Icon,
   Image,
   Input,
+  IconButton,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -276,7 +279,6 @@ const useCases = [
     title: "Plan campaigns with confidence",
     description:
       "Stop wasting budget targeting audiences based on guesswork. Rank your customer data by demographic fit before launch, so you know who to prioritise, where to focus spend and which segments to leave out.",
-    callToAction: "Plan a campaign",
     icon: CalendarIcon,
     accent: "brand.500",
     background: "brand.50",
@@ -285,7 +287,6 @@ const useCases = [
     title: "Make direct mail spend count",
     description:
       "Stop paying to print and post to low-fit households. Prioritise addresses with the strongest demographic match, build more focused mailing lists and put your budget behind the people most likely to respond.",
-    callToAction: "Build a mailing list",
     icon: EmailIcon,
     accent: "purple.500",
     background: "purple.50",
@@ -294,7 +295,6 @@ const useCases = [
     title: "Prioritise the right leads",
     description:
       "Stop treating every lead as equally valuable. Add demographic-fit scores to your existing lead data, so sales teams can focus their time on the prospects most likely to match your ideal customer profile.",
-    callToAction: "Score your leads",
     icon: Search2Icon,
     accent: "blue.500",
     background: "blue.50",
@@ -303,7 +303,6 @@ const useCases = [
     title: "Send more relevant emails",
     description:
       "Stop sending the same message to everyone and hoping it lands. Segment your contact list by demographic fit to target campaigns more precisely, tailor your messaging and give every email a better chance of converting.",
-    callToAction: "Segment your emails",
     icon: AtSignIcon,
     accent: "orange.500",
     background: "orange.50",
@@ -317,6 +316,24 @@ const answerableQuestions = [
   "How many customers rank in the top 10%, 20% or 30%?",
   "How does audience affinity compare from one area to another?",
   "Which records should I prioritise for my next campaign?",
+] as const;
+
+const heroSlides = [
+  {
+    src: "/images/segmentbase-audience.png",
+    alt: "Segmentbase audience results showing affinity scores and a map",
+    label: "Explore individual audience matches",
+  },
+  {
+    src: "/images/segmentbase-audience-affinity.png",
+    alt: "Segmentbase audience table showing affinity ranks and scores",
+    label: "Rank and prioritise every audience record",
+  },
+  {
+    src: "/images/segmentbase-areas.png",
+    alt: "Segmentbase area results comparing affinity ranks by location",
+    label: "Compare audience affinity by area",
+  },
 ] as const;
 
 const frequentlyAskedQuestions = [
@@ -388,6 +405,7 @@ export default function App() {
     "none" | "ascending" | "descending"
   >("descending");
   const [rankFilter, setRankFilter] = useState("all");
+  const [heroSlide, setHeroSlide] = useState(0);
   const [selectedResultRow, setSelectedResultRow] = useState<Record<
     string,
     unknown
@@ -714,38 +732,125 @@ export default function App() {
       </Box>
 
       <Container flex="1" maxW="7xl" py={{ base: 10, md: 16 }}>
-        <Stack align="center" spacing={6} textAlign="center">
-          <Heading
-            fontSize={{ base: "4xl", md: "6xl" }}
-            letterSpacing="-0.025em"
-            lineHeight="1.10"
-            maxW="5xl"
-          >
-            Turn customer postcodes into demographic audience insights
-          </Heading>
-          <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }} maxW="2xl">
-            Segment your audience data by personas based on age group, household
-            type, occupation, household income and more, so you can focus your
-            marketing on audiences most likely to convert
-          </Text>
+        <SimpleGrid
+          alignItems="center"
+          spacing={{ base: 10, lg: 12 }}
+          templateColumns={{ base: "1fr", lg: "1.15fr 0.85fr" }}
+        >
+          <Stack align="flex-start" spacing={6} textAlign="left">
+            <Heading
+              fontSize={{ base: "4xl", md: "5xl", xl: "6xl" }}
+              letterSpacing="-0.025em"
+              lineHeight="1.08"
+            >
+              Turn customer postcodes into demographic audience insights
+            </Heading>
+            <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }}>
+              Segment your United Kingdom audience data into personas based on
+              age group, household type, occupation, household income and more,
+              so you can focus your marketing on audiences most likely to
+              convert.
+            </Text>
 
-          <Button
-            as="a"
-            colorScheme="brand"
-            href="#upload"
-            onClick={(event) => {
-              event.preventDefault();
-              trackAnalyticsEvent("try_now_click", {
-                button_location: "hero",
-              });
-              scrollToUpload();
-            }}
-            rightIcon={<ArrowForwardIcon />}
-            size="lg"
+            <Button
+              as="a"
+              colorScheme="brand"
+              href="#upload"
+              onClick={(event) => {
+                event.preventDefault();
+                trackAnalyticsEvent("try_now_click", {
+                  button_location: "hero",
+                });
+                scrollToUpload();
+              }}
+              rightIcon={<ArrowForwardIcon />}
+              size="lg"
+            >
+              Try for free
+            </Button>
+          </Stack>
+
+          <Box
+            bg="gray.100"
+            borderColor="gray.200"
+            borderWidth="1px"
+            overflow="hidden"
+            position="relative"
+            rounded="2xl"
+            shadow="xl"
           >
-            Try now
-          </Button>
-        </Stack>
+            <Image
+              alt={heroSlides[heroSlide].alt}
+              aspectRatio={16 / 10}
+              objectFit="cover"
+              objectPosition="left top"
+              src={heroSlides[heroSlide].src}
+              w="full"
+            />
+            <Box
+              bgGradient="linear(to-t, blackAlpha.700, transparent)"
+              bottom={0}
+              h="35%"
+              left={0}
+              pointerEvents="none"
+              position="absolute"
+              right={0}
+            />
+            <Text
+              bottom={5}
+              color="white"
+              fontSize="sm"
+              fontWeight="semibold"
+              left={5}
+              position="absolute"
+              textShadow="0 1px 8px rgba(0, 0, 0, 0.45)"
+            >
+              {heroSlides[heroSlide].label}
+            </Text>
+            <HStack position="absolute" right={4} top={4}>
+              <IconButton
+                aria-label="Show previous screenshot"
+                bg="whiteAlpha.900"
+                icon={<ChevronLeftIcon />}
+                onClick={() =>
+                  setHeroSlide(
+                    (slide) =>
+                      (slide + heroSlides.length - 1) % heroSlides.length,
+                  )
+                }
+                rounded="full"
+                size="sm"
+                _hover={{ bg: "white" }}
+              />
+              <IconButton
+                aria-label="Show next screenshot"
+                bg="whiteAlpha.900"
+                icon={<ChevronRightIcon />}
+                onClick={() =>
+                  setHeroSlide((slide) => (slide + 1) % heroSlides.length)
+                }
+                rounded="full"
+                size="sm"
+                _hover={{ bg: "white" }}
+              />
+            </HStack>
+            <HStack bottom={5} position="absolute" right={5} spacing={2}>
+              {heroSlides.map((slide, index) => (
+                <Box
+                  aria-label={`Show ${slide.label}`}
+                  as="button"
+                  bg={index === heroSlide ? "white" : "whiteAlpha.500"}
+                  borderRadius="full"
+                  h="8px"
+                  key={slide.src}
+                  onClick={() => setHeroSlide(index)}
+                  transition="width 0.2s ease"
+                  w={index === heroSlide ? "22px" : "8px"}
+                />
+              ))}
+            </HStack>
+          </Box>
+        </SimpleGrid>
 
         <Box as="section" mt={{ base: 20, md: 28 }}>
           <Text
@@ -798,21 +903,23 @@ export default function App() {
                   transform: "translateY(-4px)",
                 }}
               >
-                <Flex
-                  align="center"
-                  bg={useCase.background}
-                  color={useCase.accent}
-                  h={12}
-                  justify="center"
-                  mb={6}
-                  rounded="xl"
-                  w={12}
-                >
-                  <Icon as={useCase.icon} boxSize={5} />
-                </Flex>
-                <Heading fontSize="2xl" letterSpacing="-0.025em">
-                  {useCase.title}
-                </Heading>
+                <HStack align="center" spacing={4}>
+                  <Flex
+                    align="center"
+                    bg={useCase.background}
+                    color={useCase.accent}
+                    flexShrink={0}
+                    h={12}
+                    justify="center"
+                    rounded="xl"
+                    w={12}
+                  >
+                    <Icon as={useCase.icon} boxSize={5} />
+                  </Flex>
+                  <Heading fontSize="2xl" letterSpacing="-0.025em">
+                    {useCase.title}
+                  </Heading>
+                </HStack>
                 <Text color="gray.600" lineHeight="tall" mt={3}>
                   {useCase.description}
                 </Text>
@@ -825,7 +932,7 @@ export default function App() {
                       event.preventDefault();
                       trackAnalyticsEvent("use_case_cta_click", {
                         use_case: useCase.title,
-                        cta_label: useCase.callToAction,
+                        cta_label: "Try now",
                       });
                       scrollToUpload();
                     }}
@@ -833,7 +940,7 @@ export default function App() {
                     size="sm"
                     variant="ghost"
                   >
-                    {useCase.callToAction}
+                    Try now
                   </Button>
                 </Flex>
               </Box>
