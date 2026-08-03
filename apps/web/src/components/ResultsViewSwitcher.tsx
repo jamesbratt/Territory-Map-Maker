@@ -1,4 +1,4 @@
-import { Button, ButtonGroup, Icon } from "@chakra-ui/react";
+import { Box, Button, ButtonGroup, Icon, Text } from "@chakra-ui/react";
 
 function AudienceIcon() {
   return (
@@ -47,19 +47,49 @@ export function ResultsViewSwitcher({
     <ButtonGroup isAttached size="sm" variant="outline">
       <Button
         colorScheme={value === "results" ? "brand" : "gray"}
+        h="auto"
         leftIcon={<AudienceIcon />}
         onClick={() => onChange("results")}
+        py={2}
         variant={value === "results" ? "solid" : "outline"}
       >
-        Audience
+        <Box textAlign="left">
+          <Text fontSize="sm" fontWeight="semibold" lineHeight="short">
+            Audience
+          </Text>
+          <Text
+            color={value === "results" ? "whiteAlpha.800" : "gray.500"}
+            fontSize="xs"
+            fontWeight="normal"
+            lineHeight="short"
+            mt={0.5}
+          >
+            Explore individual results
+          </Text>
+        </Box>
       </Button>
       <Button
         colorScheme={value === "areas" ? "brand" : "gray"}
+        h="auto"
         leftIcon={<AreaIcon />}
         onClick={() => onChange("areas")}
+        py={2}
         variant={value === "areas" ? "solid" : "outline"}
       >
-        Area
+        <Box textAlign="left">
+          <Text fontSize="sm" fontWeight="semibold" lineHeight="short">
+            Area
+          </Text>
+          <Text
+            color={value === "areas" ? "whiteAlpha.800" : "gray.500"}
+            fontSize="xs"
+            fontWeight="normal"
+            lineHeight="short"
+            mt={0.5}
+          >
+            Compare results by location
+          </Text>
+        </Box>
       </Button>
     </ButtonGroup>
   );

@@ -364,6 +364,7 @@ export default function App() {
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
   const shouldScrollToResultsRef = useRef(false);
+  const postcodeModal = useDisclosure();
   const personaModal = useDisclosure();
   const detailModal = useDisclosure();
   const processingSuccessModal = useDisclosure();
@@ -585,20 +586,34 @@ export default function App() {
     if (!file) return;
 
     setPendingFile(file);
+    setPostcodeColumn("");
     setSelectedPersonaId(null);
     setUploadResult(null);
+    postcodeModal.onOpen();
+  };
+
+  const handlePostcodeModalClose = () => {
+    setPendingFile(null);
+    setPostcodeColumn("");
+    postcodeModal.onClose();
+  };
+
+  const handlePostcodeContinue = () => {
+    if (!postcodeColumn.trim()) return;
+
+    postcodeModal.onClose();
     personaModal.onOpen();
   };
 
   const handleModalClose = () => {
     if (isUploading) return;
     setPendingFile(null);
+    setPostcodeColumn("");
     setSelectedPersonaId(null);
     personaModal.onClose();
   };
 
   const scrollToUpload = () => {
-    postcodeInputRef.current?.focus({ preventScroll: true });
     uploadSectionRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "start",
@@ -1049,16 +1064,6 @@ export default function App() {
             w="full"
           >
             <Stack spacing={4}>
-              <FormControl isRequired>
-                <FormLabel fontSize="sm">Postcode column</FormLabel>
-                <Input
-                  onChange={(event) => setPostcodeColumn(event.target.value)}
-                  placeholder="Enter the column name that contains post codes"
-                  ref={postcodeInputRef}
-                  value={postcodeColumn}
-                />
-              </FormControl>
-
               <Input
                 accept=".csv,text/csv"
                 display="none"
@@ -1068,13 +1073,16 @@ export default function App() {
               />
               <Button
                 colorScheme="brand"
-                isDisabled={!postcodeColumn.trim()}
                 onClick={() => fileInputRef.current?.click()}
                 rightIcon={<ArrowForwardIcon />}
                 size="lg"
               >
                 Choose CSV file
               </Button>
+              <Text color="gray.500" fontSize="sm" textAlign="center">
+                After choosing a file, you’ll identify its postcode column and
+                select an audience persona.
+              </Text>
             </Stack>
           </Box>
         </Box>
@@ -1869,6 +1877,58 @@ export default function App() {
               }}
             >
               Close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        initialFocusRef={postcodeInputRef}
+        isCentered
+        isOpen={postcodeModal.isOpen}
+        onClose={handlePostcodeModalClose}
+        size="md"
+      >
+        <ModalOverlay />
+        <ModalContent
+          as="form"
+          mx={4}
+          onSubmit={(event) => {
+            event.preventDefault();
+            handlePostcodeContinue();
+          }}
+        >
+          <ModalHeader pb={2}>Identify the postcode column</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text color="gray.600" mb={5}>
+              Enter the exact column header containing postcodes in{" "}
+              <Text as="span" fontWeight="semibold">
+                {pendingFile?.name}
+              </Text>
+              .
+            </Text>
+            <FormControl isRequired>
+              <FormLabel fontSize="sm">Postcode column header</FormLabel>
+              <Input
+                onChange={(event) => setPostcodeColumn(event.target.value)}
+                placeholder="For example, postcode"
+                ref={postcodeInputRef}
+                value={postcodeColumn}
+              />
+            </FormControl>
+          </ModalBody>
+          <ModalFooter>
+            <Button mr={3} onClick={handlePostcodeModalClose} variant="ghost">
+              Cancel
+            </Button>
+            <Button
+              colorScheme="brand"
+              isDisabled={!postcodeColumn.trim()}
+              rightIcon={<ArrowForwardIcon />}
+              type="submit"
+            >
+              Continue
             </Button>
           </ModalFooter>
         </ModalContent>
