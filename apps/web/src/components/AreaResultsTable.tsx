@@ -19,6 +19,7 @@ import {
 } from "@chakra-ui/react";
 import { DownloadIcon } from "@chakra-ui/icons";
 import {
+  type ExpressionSpecification,
   LngLatBounds,
   Map as MapLibreMap,
   NavigationControl,
@@ -52,6 +53,33 @@ const SEGMENT_RANK_COLORS: Record<(typeof SEGMENT_RANKS)[number], string> = {
   "10-20%": "#ef4444",
   "bottom 10%": "#991b1b",
 };
+
+const UNRANKED_COLOR = "#64748b";
+const SEGMENT_RANK_COLOR_EXPRESSION: ExpressionSpecification = [
+  "match",
+  ["get", "rank"],
+  "top 10%",
+  SEGMENT_RANK_COLORS["top 10%"],
+  "top 20%",
+  SEGMENT_RANK_COLORS["top 20%"],
+  "top 30%",
+  SEGMENT_RANK_COLORS["top 30%"],
+  "top 40%",
+  SEGMENT_RANK_COLORS["top 40%"],
+  "top 50%",
+  SEGMENT_RANK_COLORS["top 50%"],
+  "40-50%",
+  SEGMENT_RANK_COLORS["40-50%"],
+  "30-40%",
+  SEGMENT_RANK_COLORS["30-40%"],
+  "20-30%",
+  SEGMENT_RANK_COLORS["20-30%"],
+  "10-20%",
+  SEGMENT_RANK_COLORS["10-20%"],
+  "bottom 10%",
+  SEGMENT_RANK_COLORS["bottom 10%"],
+  UNRANKED_COLOR,
+];
 
 type AreaResultsTableProps = {
   mapStyleUrl: string;
@@ -217,7 +245,7 @@ export function AreaResultsTable({
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    const features = results.flatMap((result) => {
+    const features = results.flatMap((result, rowIndex) => {
       const latitude = Number(result.lat);
       const longitude = Number(result.long);
 
@@ -245,7 +273,11 @@ export function AreaResultsTable({
             type: "Point" as const,
             coordinates: [longitude, latitude],
           },
-          properties: {},
+          properties: {
+            rowIndex,
+            postcode: String(result.postcode ?? ""),
+            rank: String(result.segment_affinity_rank ?? ""),
+          },
         },
       ];
     });
@@ -267,68 +299,16 @@ export function AreaResultsTable({
         },
       });
       map.addLayer({
-        id: "area-results-heatmap",
-        type: "heatmap",
+        id: "area-result-dots",
+        type: "circle",
         source: "area-results",
         paint: {
-          "heatmap-intensity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            4,
-            0.7,
-            8,
-            1,
-            12,
-            3,
-            15,
-            5,
-          ],
-          "heatmap-color": [
-            "interpolate",
-            ["linear"],
-            ["heatmap-density"],
-            0,
-            "rgba(59, 130, 246, 0)",
-            0.05,
-            "#60a5fa",
-            0.15,
-            "#22d3ee",
-            0.3,
-            "#a3e635",
-            0.5,
-            "#facc15",
-            0.75,
-            "#dc2626",
-            1,
-            "#7f1d1d",
-          ],
-          "heatmap-radius": [
-            "interpolate",
-            ["exponential", 1.5],
-            ["zoom"],
-            4,
-            6,
-            8,
-            12,
-            10,
-            30,
-            12,
-            70,
-            15,
-            140,
-          ],
-          "heatmap-opacity": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            4,
-            0.8,
-            10,
-            0.95,
-            15,
-            1,
-          ],
+          "circle-color": SEGMENT_RANK_COLOR_EXPRESSION,
+          "circle-opacity": 0.78,
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 12, 7],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-opacity": 0.8,
+          "circle-stroke-width": 1,
         },
       });
 

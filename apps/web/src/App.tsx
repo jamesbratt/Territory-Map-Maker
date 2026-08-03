@@ -58,7 +58,6 @@ import {
   setWorkerUrl,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { ApiStatus } from "./components/ApiStatus";
 import { AreaResultsTable } from "./components/AreaResultsTable";
 import {
   ResultsViewSwitcher,
@@ -300,56 +299,6 @@ const personas = [
       "small_employers_own_account",
       "active_excl_students_self_emp_with_employees",
       "owned_mortgage_or_loan",
-    ],
-  },
-  {
-    id: "skilled-tradespeople",
-    name: "Skilled tradespeople",
-    description:
-      "Working households with strong representation in skilled and technical roles.",
-    variables: [
-      "age_35_44",
-      "occ_5_skilled",
-      "lower_supervisory_technical",
-      "two_cars_or_vans",
-    ],
-  },
-  {
-    id: "urban-renters",
-    name: "Urban renters",
-    description:
-      "Younger private renters living in flats with car-light urban lifestyles.",
-    variables: [
-      "age_25_34",
-      "private_rented_landlord_or_agency",
-      "purpose_built_flat",
-      "no_cars_or_vans",
-    ],
-  },
-  {
-    id: "established-couples",
-    name: "Established couples",
-    description:
-      "Mature couples without dependent children in settled, asset-rich households.",
-    variables: [
-      "age_55_64",
-      "single_family_household_married_civil_partnership_no_children",
-      "owned_outright",
-      "two_cars_or_vans",
-      "annual_income_after_costs_high",
-    ],
-  },
-  {
-    id: "senior-decision-makers",
-    name: "Senior decision makers",
-    description:
-      "Experienced professionals in management and senior leadership roles.",
-    variables: [
-      "age_45_54",
-      "occ_1_managers",
-      "higher_managerial_professional",
-      "qualification_level_4_plus",
-      "annual_income_before_costs_high",
     ],
   },
 ] as const;
@@ -885,25 +834,9 @@ export default function App() {
     <Box display="flex" flexDirection="column" minH="100vh">
       <Box as="header" bg="white" borderBottomWidth="1px">
         <Container maxW="7xl" py={4}>
-          <Flex align="center" justify="space-between">
-            <HStack spacing={3}>
-              <Flex
-                align="center"
-                bg="gray.900"
-                color="white"
-                h={9}
-                justify="center"
-                rounded="lg"
-                w={9}
-              >
-                <Icon as={AtSignIcon} boxSize={4} />
-              </Flex>
-              <Heading fontSize="lg" letterSpacing="-0.02em">
-                Segmentbase
-              </Heading>
-            </HStack>
-            <ApiStatus />
-          </Flex>
+          <Heading fontSize="lg" letterSpacing="-0.02em">
+            Segmentbase
+          </Heading>
         </Container>
       </Box>
 
@@ -915,7 +848,7 @@ export default function App() {
             lineHeight="1.10"
             maxW="5xl"
           >
-            Prioritise your UK audience by demographic fit
+            Turn customer postcodes into demographic audience insights
           </Heading>
           <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }} maxW="2xl">
             Segment your audience data by personas based on age group, household
