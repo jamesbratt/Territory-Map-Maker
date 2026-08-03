@@ -59,6 +59,11 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ApiStatus } from "./components/ApiStatus";
+import { AreaResultsTable } from "./components/AreaResultsTable";
+import {
+  ResultsViewSwitcher,
+  type ResultsView,
+} from "./components/ResultsViewSwitcher";
 import { uploadCsv } from "./lib/api";
 
 const RESULTS_PER_PAGE = 10;
@@ -472,6 +477,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [isChangingPersona, setIsChangingPersona] = useState(false);
   const [uploadRows, setUploadRows] = useState<Record<string, unknown>[]>([]);
+  const [resultsView, setResultsView] = useState<ResultsView>("results");
   const [currentPage, setCurrentPage] = useState(1);
   const [sortOrder, setSortOrder] = useState<
     "none" | "ascending" | "descending"
@@ -635,7 +641,13 @@ export default function App() {
   }, [uploadRows]);
 
   useEffect(() => {
-    if (uploadRows.length === 0 || !mapContainerRef.current) return;
+    if (
+      resultsView !== "results" ||
+      uploadRows.length === 0 ||
+      !mapContainerRef.current
+    ) {
+      return;
+    }
 
     const features = filteredRows.flatMap((row, rowIndex) => {
       if (
@@ -727,7 +739,7 @@ export default function App() {
     });
 
     return () => map.remove();
-  }, [filteredRows, uploadRows.length]);
+  }, [filteredRows, resultsView, uploadRows.length]);
 
   const openResultDetails = (row: Record<string, unknown>) => {
     setSelectedResultRow(row);
@@ -1210,15 +1222,19 @@ export default function App() {
             scrollMarginTop={8}
           >
             <Flex
-              align={{ base: "stretch", lg: "end" }}
-              direction={{ base: "column", lg: "row" }}
-              gap={3}
+              align={{ base: "stretch", sm: "end" }}
+              direction={{ base: "column", sm: "row" }}
+              gap={4}
               justify="space-between"
-              mb={4}
-              order={-1}
+              mb={6}
+              order={-3}
             >
+              <ResultsViewSwitcher
+                onChange={setResultsView}
+                value={resultsView}
+              />
               <HStack align="flex-end" spacing={2}>
-                <FormControl maxW={{ lg: "240px" }} minW={{ sm: "190px" }}>
+                <FormControl maxW={{ sm: "240px" }} minW={{ sm: "190px" }}>
                   <FormLabel fontSize="sm" mb={1}>
                     Persona
                   </FormLabel>
@@ -1247,6 +1263,17 @@ export default function App() {
                   )}
                 </Flex>
               </HStack>
+            </Flex>
+            {resultsView === "results" ? (
+              <>
+            <Flex
+              align={{ base: "stretch", lg: "end" }}
+              direction={{ base: "column", lg: "row" }}
+              gap={3}
+              justify="space-between"
+              mb={4}
+              order={-1}
+            >
               <Stack
                 direction={{ base: "column", md: "row" }}
                 spacing={3}
@@ -1298,19 +1325,19 @@ export default function App() {
                     </option>
                   </Select>
                 </FormControl>
-                <Button
-                  alignSelf="end"
-                  colorScheme="brand"
-                  flexShrink={0}
-                  isDisabled={sortedRows.length === 0}
-                  leftIcon={<DownloadIcon />}
-                  onClick={exportVisibleRows}
-                  w={{ base: "full", md: "auto" }}
-                  whiteSpace="nowrap"
-                >
-                  Export CSV
-                </Button>
               </Stack>
+              <Button
+                alignSelf="flex-end"
+                colorScheme="brand"
+                flexShrink={0}
+                isDisabled={sortedRows.length === 0}
+                leftIcon={<DownloadIcon />}
+                ml={{ lg: "auto" }}
+                onClick={exportVisibleRows}
+                whiteSpace="nowrap"
+              >
+                Export CSV
+              </Button>
             </Flex>
 
             {uploadResult?.status === "error" && (
@@ -1653,6 +1680,14 @@ export default function App() {
                   </Button>
                 </HStack>
               </Flex>
+            )}
+              </>
+            ) : (
+              <AreaResultsTable
+                mapStyleUrl={MAP_STYLE_URL}
+                personaName={resultsPersonaName}
+                results={uploadRows}
+              />
             )}
           </Box>
         )}
