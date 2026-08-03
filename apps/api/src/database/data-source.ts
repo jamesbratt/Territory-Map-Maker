@@ -13,6 +13,7 @@ import { EconomicActivity } from "./entities/EconomicActivity";
 import { AccommodationType } from "./entities/AccommodationType";
 import { QualificationLevel } from "./entities/QualificationLevel";
 import { HouseholdIncome } from "./entities/HouseholdIncome";
+import { LadNameLookup } from "./entities/LadNameLookup";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
@@ -34,6 +35,7 @@ export const AppDataSource = new DataSource({
     AccommodationType,
     QualificationLevel,
     HouseholdIncome,
+    LadNameLookup,
   ],
   synchronize: false,
   migrations: ["dist/database/migrations/*.js"],
