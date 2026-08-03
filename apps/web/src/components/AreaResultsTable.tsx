@@ -18,68 +18,14 @@ import {
   Tr,
 } from "@chakra-ui/react";
 import { DownloadIcon } from "@chakra-ui/icons";
+import { useEffect, useMemo, useState } from "react";
 import {
-  type ExpressionSpecification,
-  LngLatBounds,
-  Map as MapLibreMap,
-  NavigationControl,
-} from "maplibre-gl";
-import { useEffect, useMemo, useRef, useState } from "react";
+  ResultsMap,
+  SEGMENT_RANK_COLORS,
+  SEGMENT_RANKS,
+} from "./ResultsMap";
 
 const RESULTS_PER_PAGE = 10;
-
-const SEGMENT_RANKS = [
-  "top 10%",
-  "top 20%",
-  "top 30%",
-  "top 40%",
-  "top 50%",
-  "40-50%",
-  "30-40%",
-  "20-30%",
-  "10-20%",
-  "bottom 10%",
-] as const;
-
-const SEGMENT_RANK_COLORS: Record<(typeof SEGMENT_RANKS)[number], string> = {
-  "top 10%": "#166534",
-  "top 20%": "#22c55e",
-  "top 30%": "#84cc16",
-  "top 40%": "#a3e635",
-  "top 50%": "#facc15",
-  "40-50%": "#fbbf24",
-  "30-40%": "#fb923c",
-  "20-30%": "#f97316",
-  "10-20%": "#ef4444",
-  "bottom 10%": "#991b1b",
-};
-
-const UNRANKED_COLOR = "#64748b";
-const SEGMENT_RANK_COLOR_EXPRESSION: ExpressionSpecification = [
-  "match",
-  ["get", "rank"],
-  "top 10%",
-  SEGMENT_RANK_COLORS["top 10%"],
-  "top 20%",
-  SEGMENT_RANK_COLORS["top 20%"],
-  "top 30%",
-  SEGMENT_RANK_COLORS["top 30%"],
-  "top 40%",
-  SEGMENT_RANK_COLORS["top 40%"],
-  "top 50%",
-  SEGMENT_RANK_COLORS["top 50%"],
-  "40-50%",
-  SEGMENT_RANK_COLORS["40-50%"],
-  "30-40%",
-  SEGMENT_RANK_COLORS["30-40%"],
-  "20-30%",
-  SEGMENT_RANK_COLORS["20-30%"],
-  "10-20%",
-  SEGMENT_RANK_COLORS["10-20%"],
-  "bottom 10%",
-  SEGMENT_RANK_COLORS["bottom 10%"],
-  UNRANKED_COLOR,
-];
 
 type AreaResultsTableProps = {
   mapStyleUrl: string;
@@ -107,7 +53,6 @@ export function AreaResultsTable({
   results,
   personaName,
 }: AreaResultsTableProps) {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("count");
   const areaSummaries = useMemo(() => {
@@ -185,19 +130,18 @@ export function AreaResultsTable({
           getRankShare(first, highAffinityRanks) ||
         first.area.localeCompare(second.area),
     );
-    const totalRows = areaSummaries.reduce(
-      (total, summary) => total + summary.count,
-      0,
-    );
-    const rankTotals = SEGMENT_RANKS.map((rank) => ({
-      rank,
-      count: areaSummaries.reduce(
-        (total, summary) => total + (summary.rankCounts.get(rank) ?? 0),
+    const getHighAffinityCount = (summary: AreaSummary) =>
+      highAffinityRanks.reduce(
+        (total, rank) => total + (summary.rankCounts.get(rank) ?? 0),
         0,
-      ),
-    })).sort((first, second) => second.count - first.count);
-    const mostCommonRank = rankTotals[0];
-
+      );
+    const byHighAffinityCount = [...areaSummaries].sort(
+      (first, second) =>
+        getHighAffinityCount(second) - getHighAffinityCount(first) ||
+        getRankShare(second, highAffinityRanks) -
+          getRankShare(first, highAffinityRanks) ||
+        first.area.localeCompare(second.area),
+    );
     return [
       {
         label: "Top area by count",
@@ -219,12 +163,11 @@ export function AreaResultsTable({
           : "No results",
       },
       {
-        label: "Most common rank",
-        value: mostCommonRank?.rank ?? "—",
-        detail:
-          mostCommonRank && totalRows > 0
-            ? `${((mostCommonRank.count / totalRows) * 100).toFixed(1)}% of rows`
-            : "No results",
+        label: "Largest high-affinity audience",
+        value: byHighAffinityCount[0]?.area ?? "—",
+        detail: byHighAffinityCount[0]
+          ? `${getHighAffinityCount(byHighAffinityCount[0]).toLocaleString()} Top 30% rows · ${getRankShare(byHighAffinityCount[0], highAffinityRanks).toFixed(1)}% of area`
+          : "No results",
       },
     ];
   }, [areaSummaries]);
@@ -241,96 +184,6 @@ export function AreaResultsTable({
   useEffect(() => {
     setCurrentPage(1);
   }, [results, sortKey]);
-
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-
-    const features = results.flatMap((result, rowIndex) => {
-      const latitude = Number(result.lat);
-      const longitude = Number(result.long);
-
-      if (
-        result.lat === null ||
-        result.lat === undefined ||
-        result.lat === "" ||
-        result.long === null ||
-        result.long === undefined ||
-        result.long === "" ||
-        !Number.isFinite(latitude) ||
-        !Number.isFinite(longitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        return [];
-      }
-
-      return [
-        {
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [longitude, latitude],
-          },
-          properties: {
-            rowIndex,
-            postcode: String(result.postcode ?? ""),
-            rank: String(result.segment_affinity_rank ?? ""),
-          },
-        },
-      ];
-    });
-
-    const map = new MapLibreMap({
-      container: mapContainerRef.current,
-      style: mapStyleUrl,
-      center: [-2.7, 52.6],
-      zoom: 5.4,
-    });
-
-    map.addControl(new NavigationControl(), "top-right");
-    map.on("load", () => {
-      map.addSource("area-results", {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features,
-        },
-      });
-      map.addLayer({
-        id: "area-result-dots",
-        type: "circle",
-        source: "area-results",
-        paint: {
-          "circle-color": SEGMENT_RANK_COLOR_EXPRESSION,
-          "circle-opacity": 0.78,
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 12, 7],
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-opacity": 0.8,
-          "circle-stroke-width": 1,
-        },
-      });
-
-      if (features.length > 0) {
-        const bounds = features.reduce(
-          (resultBounds, feature) =>
-            resultBounds.extend(
-              feature.geometry.coordinates as [number, number],
-            ),
-          new LngLatBounds(),
-        );
-
-        map.fitBounds(bounds, {
-          padding: 48,
-          maxZoom: 13,
-          duration: 0,
-        });
-      }
-    });
-
-    return () => map.remove();
-  }, [mapStyleUrl, results]);
 
   const exportCsv = () => {
     const headers = ["Area", "Count", ...SEGMENT_RANKS];
@@ -404,14 +257,7 @@ export function AreaResultsTable({
             </SimpleGrid>
           </Box>
         </Box>
-        <Box
-          borderWidth="1px"
-          minH="320px"
-          overflow="hidden"
-          rounded="xl"
-        >
-          <Box h="full" minH="320px" ref={mapContainerRef} w="full" />
-        </Box>
+        <ResultsMap mapStyleUrl={mapStyleUrl} results={results} />
       </SimpleGrid>
 
       <Flex
@@ -430,11 +276,11 @@ export function AreaResultsTable({
             onChange={(event) => setSortKey(event.target.value as SortKey)}
             value={sortKey}
           >
-            <option value="count">Count: highest first</option>
+            <option value="count">Row count</option>
             <option value="area">Area name</option>
             {SEGMENT_RANKS.map((rank) => (
               <option key={rank} value={rank}>
-                {rank}: highest first
+                {rank}
               </option>
             ))}
           </Select>

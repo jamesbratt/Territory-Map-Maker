@@ -48,17 +48,14 @@ import {
   Thead,
   Tr,
   useDisclosure,
+  Wrap,
+  WrapItem,
 } from "@chakra-ui/react";
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import {
-  type ExpressionSpecification,
-  LngLatBounds,
-  Map as MapLibreMap,
-  NavigationControl,
-  setWorkerUrl,
-} from "maplibre-gl";
+import { setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { AreaResultsTable } from "./components/AreaResultsTable";
+import { ResultsMap, SEGMENT_RANKS } from "./components/ResultsMap";
 import {
   ResultsViewSwitcher,
   type ResultsView,
@@ -70,31 +67,6 @@ setWorkerUrl(`${import.meta.env.BASE_URL}maplibre-gl-worker.mjs`);
 
 const MAPTILER_API_KEY = "rvEdtOdLKbADHjJHzejJ";
 const MAP_STYLE_URL = `https://api.maptiler.com/maps/base-v4/style.json?key=${MAPTILER_API_KEY}`;
-const SEGMENT_RANK_ORDER = [
-  "top 10%",
-  "top 20%",
-  "top 30%",
-  "top 40%",
-  "top 50%",
-  "40-50%",
-  "30-40%",
-  "20-30%",
-  "10-20%",
-  "bottom 10%",
-];
-const SEGMENT_RANK_COLORS: Record<string, string> = {
-  "top 10%": "#166534",
-  "top 20%": "#22c55e",
-  "top 30%": "#84cc16",
-  "top 40%": "#a3e635",
-  "top 50%": "#facc15",
-  "40-50%": "#fbbf24",
-  "30-40%": "#fb923c",
-  "20-30%": "#f97316",
-  "10-20%": "#ef4444",
-  "bottom 10%": "#991b1b",
-};
-const UNRANKED_COLOR = "#64748b";
 
 type AnalyticsWindow = Window & {
   gtag?: (
@@ -110,32 +82,6 @@ function trackAnalyticsEvent(
 ) {
   (window as AnalyticsWindow).gtag?.("event", eventName, parameters);
 }
-
-const SEGMENT_RANK_COLOR_EXPRESSION: ExpressionSpecification = [
-  "match",
-  ["get", "rank"],
-  "top 10%",
-  SEGMENT_RANK_COLORS["top 10%"],
-  "top 20%",
-  SEGMENT_RANK_COLORS["top 20%"],
-  "top 30%",
-  SEGMENT_RANK_COLORS["top 30%"],
-  "top 40%",
-  SEGMENT_RANK_COLORS["top 40%"],
-  "top 50%",
-  SEGMENT_RANK_COLORS["top 50%"],
-  "40-50%",
-  SEGMENT_RANK_COLORS["40-50%"],
-  "30-40%",
-  SEGMENT_RANK_COLORS["30-40%"],
-  "20-30%",
-  SEGMENT_RANK_COLORS["20-30%"],
-  "10-20%",
-  SEGMENT_RANK_COLORS["10-20%"],
-  "bottom 10%",
-  SEGMENT_RANK_COLORS["bottom 10%"],
-  UNRANKED_COLOR,
-];
 
 function getAffinityColor(score: number): string {
   if (score >= 80) return "green";
@@ -407,7 +353,6 @@ export default function App() {
   const postcodeInputRef = useRef<HTMLInputElement>(null);
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
-  const mapContainerRef = useRef<HTMLDivElement>(null);
   const shouldScrollToResultsRef = useRef(false);
   const personaModal = useDisclosure();
   const detailModal = useDisclosure();
@@ -477,8 +422,12 @@ export default function App() {
             ),
         ),
       ].sort((first, second) => {
-        const firstIndex = SEGMENT_RANK_ORDER.indexOf(first.toLowerCase());
-        const secondIndex = SEGMENT_RANK_ORDER.indexOf(second.toLowerCase());
+        const firstIndex = SEGMENT_RANKS.findIndex(
+          (rank) => rank === first.toLowerCase(),
+        );
+        const secondIndex = SEGMENT_RANKS.findIndex(
+          (rank) => rank === second.toLowerCase(),
+        );
 
         if (firstIndex === -1 && secondIndex === -1) {
           return first.localeCompare(second);
@@ -588,107 +537,6 @@ export default function App() {
       block: "start",
     });
   }, [uploadRows]);
-
-  useEffect(() => {
-    if (
-      resultsView !== "results" ||
-      uploadRows.length === 0 ||
-      !mapContainerRef.current
-    ) {
-      return;
-    }
-
-    const features = filteredRows.flatMap((row, rowIndex) => {
-      if (
-        row.lat === null ||
-        row.lat === undefined ||
-        row.lat === "" ||
-        row.long === null ||
-        row.long === undefined ||
-        row.long === ""
-      ) {
-        return [];
-      }
-
-      const latitude = Number(row.lat);
-      const longitude = Number(row.long);
-
-      if (
-        !Number.isFinite(latitude) ||
-        !Number.isFinite(longitude) ||
-        latitude < -90 ||
-        latitude > 90 ||
-        longitude < -180 ||
-        longitude > 180
-      ) {
-        return [];
-      }
-
-      return [
-        {
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [longitude, latitude],
-          },
-          properties: {
-            rowIndex,
-            postcode: String(row.postcode ?? ""),
-            rank: String(row.segment_affinity_rank ?? ""),
-          },
-        },
-      ];
-    });
-
-    const map = new MapLibreMap({
-      container: mapContainerRef.current,
-      style: MAP_STYLE_URL,
-      center: [-2.7, 52.6],
-      zoom: 5.4,
-    });
-
-    map.addControl(new NavigationControl(), "top-right");
-
-    map.on("load", () => {
-      map.addSource("upload-rows", {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features,
-        },
-      });
-      map.addLayer({
-        id: "upload-row-dots",
-        type: "circle",
-        source: "upload-rows",
-        paint: {
-          "circle-color": SEGMENT_RANK_COLOR_EXPRESSION,
-          "circle-opacity": 0.78,
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3, 12, 7],
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-opacity": 0.8,
-          "circle-stroke-width": 1,
-        },
-      });
-
-      if (features.length > 0) {
-        const bounds = features.reduce(
-          (pointBounds, feature) =>
-            pointBounds.extend(
-              feature.geometry.coordinates as [number, number],
-            ),
-          new LngLatBounds(),
-        );
-        map.fitBounds(bounds, {
-          padding: 48,
-          maxZoom: 13,
-          duration: 0,
-        });
-      }
-    });
-
-    return () => map.remove();
-  }, [filteredRows, resultsView, uploadRows.length]);
 
   const openResultDetails = (row: Record<string, unknown>) => {
     setSelectedResultRow(row);
@@ -1199,421 +1047,402 @@ export default function App() {
             </Flex>
             {resultsView === "results" ? (
               <>
-            <Flex
-              align={{ base: "stretch", lg: "end" }}
-              direction={{ base: "column", lg: "row" }}
-              gap={3}
-              justify="space-between"
-              mb={4}
-              order={-1}
-            >
-              <Stack
-                direction={{ base: "column", md: "row" }}
-                spacing={3}
-                w={{ base: "full", lg: "auto" }}
-              >
-                <FormControl minW={{ sm: "190px" }}>
-                  <FormLabel fontSize="sm" mb={1}>
-                    Filter by rank
-                  </FormLabel>
-                  <Select
-                    bg="white"
-                    onChange={(event) => {
-                      setRankFilter(event.target.value);
-                      setCurrentPage(1);
-                    }}
-                    value={rankFilter}
-                  >
-                    <option value="all">All ranks</option>
-                    {rankOptions.map((rank) => (
-                      <option key={rank} value={rank}>
-                        {rank}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
-                <FormControl minW={{ sm: "250px" }}>
-                  <FormLabel fontSize="sm" mb={1}>
-                    Sort results
-                  </FormLabel>
-                  <Select
-                    bg="white"
-                    onChange={(event) => {
-                      setSortOrder(
-                        event.target.value as
-                          | "none"
-                          | "ascending"
-                          | "descending",
-                      );
-                      setCurrentPage(1);
-                    }}
-                    value={sortOrder}
-                  >
-                    <option value="none">No sorting</option>
-                    <option value="ascending">
-                      Affinity score: low to high
-                    </option>
-                    <option value="descending">
-                      Affinity score: high to low
-                    </option>
-                  </Select>
-                </FormControl>
-              </Stack>
-              <Button
-                alignSelf="flex-end"
-                colorScheme="brand"
-                flexShrink={0}
-                isDisabled={sortedRows.length === 0}
-                leftIcon={<DownloadIcon />}
-                ml={{ lg: "auto" }}
-                onClick={exportVisibleRows}
-                whiteSpace="nowrap"
-              >
-                Export CSV
-              </Button>
-            </Flex>
-
-            {uploadResult?.status === "error" && (
-              <Alert mb={4} rounded="md" status="error">
-                <AlertIcon />
-                <AlertDescription>{uploadResult.message}</AlertDescription>
-              </Alert>
-            )}
-
-            <SimpleGrid
-              columns={{ base: 1, lg: 2 }}
-              mb={8}
-              order={-2}
-              spacing={{ base: 4, lg: 8 }}
-            >
-              <Box
-                bg="white"
-                borderWidth="1px"
-                minH="320px"
-                overflow="hidden"
-                rounded="xl"
-              >
                 <Flex
-                  align={{ base: "stretch", sm: "center" }}
-                  borderBottomWidth="1px"
-                  direction={{ base: "column", sm: "row" }}
-                  gap={5}
+                  align={{ base: "stretch", lg: "end" }}
+                  direction={{ base: "column", lg: "row" }}
+                  gap={3}
                   justify="space-between"
-                  p={{ base: 5, md: 6 }}
+                  mb={4}
+                  order={-1}
                 >
-                  <Box>
-                    <Text
-                      color="brand.600"
-                      fontSize="xs"
-                      fontWeight="bold"
-                      letterSpacing="0.08em"
-                      textTransform="uppercase"
-                    >
-                      Audience
-                    </Text>
-                    <Heading fontSize={{ base: "2xl", md: "3xl" }} mt={1}>
-                      {resultsPersonaName ?? "Selected audience"}
-                    </Heading>
-                    <Text color="gray.600" fontSize="sm" mt={2}>
-                      This audience is composed of the following census signals.
-                    </Text>
-                  </Box>
-
-                  <Box
-                    bg="brand.50"
-                    flexShrink={0}
-                    minW={{ sm: "150px" }}
-                    p={4}
-                    rounded="xl"
-                    textAlign={{ base: "left", sm: "center" }}
+                  <Stack
+                    direction={{ base: "column", md: "row" }}
+                    spacing={3}
+                    w={{ base: "full", lg: "auto" }}
                   >
-                    <Heading color="brand.700" fontSize="3xl">
-                      {highRankingSummary.percentage}%
-                    </Heading>
-                    <Text color="brand.800" fontSize="xs" fontWeight="semibold">
-                      {highRankingSummary.count} rows rank in the top 30%
-                    </Text>
-                  </Box>
+                    <FormControl minW={{ sm: "190px" }}>
+                      <FormLabel fontSize="sm" mb={1}>
+                        Filter by rank
+                      </FormLabel>
+                      <Select
+                        bg="white"
+                        onChange={(event) => {
+                          setRankFilter(event.target.value);
+                          setCurrentPage(1);
+                        }}
+                        value={rankFilter}
+                      >
+                        <option value="all">All ranks</option>
+                        {rankOptions.map((rank) => (
+                          <option key={rank} value={rank}>
+                            {rank}
+                          </option>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <FormControl minW={{ sm: "250px" }}>
+                      <FormLabel fontSize="sm" mb={1}>
+                        Sort results
+                      </FormLabel>
+                      <Select
+                        bg="white"
+                        onChange={(event) => {
+                          setSortOrder(
+                            event.target.value as
+                              | "none"
+                              | "ascending"
+                              | "descending",
+                          );
+                          setCurrentPage(1);
+                        }}
+                        value={sortOrder}
+                      >
+                        <option value="none">No sorting</option>
+                        <option value="ascending">
+                          Affinity score: low to high
+                        </option>
+                        <option value="descending">
+                          Affinity score: high to low
+                        </option>
+                      </Select>
+                    </FormControl>
+                  </Stack>
+                  <Button
+                    alignSelf="flex-end"
+                    colorScheme="brand"
+                    flexShrink={0}
+                    isDisabled={sortedRows.length === 0}
+                    leftIcon={<DownloadIcon />}
+                    ml={{ lg: "auto" }}
+                    onClick={exportVisibleRows}
+                    whiteSpace="nowrap"
+                  >
+                    Export CSV
+                  </Button>
                 </Flex>
 
+                {uploadResult?.status === "error" && (
+                  <Alert mb={4} rounded="md" status="error">
+                    <AlertIcon />
+                    <AlertDescription>{uploadResult.message}</AlertDescription>
+                  </Alert>
+                )}
+
                 <SimpleGrid
-                  columns={{ base: 1, sm: 2 }}
-                  p={{ base: 5, md: 6 }}
-                  spacing={3}
+                  columns={{ base: 1, lg: 2 }}
+                  mb={8}
+                  order={-2}
+                  spacing={{ base: 4, lg: 8 }}
                 >
-                  {resultsPersonaSignals.map((signal) => (
-                    <HStack
-                      bg="gray.50"
-                      borderWidth="1px"
-                      key={signal.key}
-                      p={3}
-                      rounded="lg"
-                      spacing={3}
+                  <Box
+                    bg="white"
+                    borderWidth="1px"
+                    minH="320px"
+                    overflow="hidden"
+                    rounded="xl"
+                  >
+                    <Flex
+                      align={{ base: "stretch", sm: "center" }}
+                      borderBottomWidth="1px"
+                      direction={{ base: "column", sm: "row" }}
+                      gap={5}
+                      justify="space-between"
+                      p={{ base: 5, md: 6 }}
                     >
-                      <Box
-                        bg="brand.500"
-                        borderRadius="full"
-                        boxSize="8px"
-                        flexShrink={0}
-                      />
                       <Box>
-                        <Text fontSize="sm" fontWeight="medium">
-                          {signal.label}
+                        <Text
+                          color="brand.600"
+                          fontSize="xs"
+                          fontWeight="bold"
+                          letterSpacing="0.08em"
+                          textTransform="uppercase"
+                        >
+                          Audience
                         </Text>
-                        <Text color="gray.500" fontSize="xs" mt={0.5}>
-                          {signal.category}
+                        <Heading fontSize={{ base: "2xl", md: "3xl" }} mt={1}>
+                          {resultsPersonaName ?? "Selected audience"}
+                        </Heading>
+                        <Text color="gray.600" fontSize="sm" mt={2}>
+                          This audience is composed of the following census
+                          signals.
                         </Text>
                       </Box>
-                    </HStack>
-                  ))}
-                </SimpleGrid>
-              </Box>
-              <Box
-                borderWidth="1px"
-                minH={{ base: "320px", lg: "unset" }}
-                overflow="hidden"
-                position="relative"
-                rounded="xl"
-                w="full"
-              >
-                <Box h="full" minH="320px" ref={mapContainerRef} w="full" />
-                <Box
-                  bg="whiteAlpha.900"
-                  bottom={3}
-                  boxShadow="sm"
-                  left={3}
-                  maxH="210px"
-                  overflowY="auto"
-                  p={3}
-                  position="absolute"
-                  rounded="md"
-                  zIndex={1}
-                >
-                  <Text fontSize="xs" fontWeight="bold" mb={2}>
-                    Segment affinity rank
-                  </Text>
-                  <Stack spacing={1}>
-                    {SEGMENT_RANK_ORDER.map((rank) => (
-                      <HStack key={rank} spacing={2}>
-                        <Box
-                          bg={SEGMENT_RANK_COLORS[rank]}
-                          borderRadius="full"
-                          boxSize="10px"
-                        />
-                        <Text fontSize="xs">{rank}</Text>
-                      </HStack>
-                    ))}
-                  </Stack>
-                </Box>
-              </Box>
-            </SimpleGrid>
 
-            <TableContainer
-              bg="white"
-              borderWidth="1px"
-              maxW="100%"
-              rounded="xl"
-            >
-              <Table size="sm">
-                <Thead bg="gray.50">
-                  <Tr>
-                    {resultColumns.map((column) => (
-                      <Th key={column} py={3} whiteSpace="nowrap">
-                        {column === "lad25nm"
-                          ? "Area"
-                          : column.replaceAll("_", " ")}
-                      </Th>
-                    ))}
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {pagedRows.length === 0 && (
-                    <Tr>
-                      <Td
-                        colSpan={resultColumns.length}
-                        py={10}
-                        textAlign="center"
+                      <Box
+                        bg="brand.50"
+                        flexShrink={0}
+                        minW={{ sm: "150px" }}
+                        p={4}
+                        rounded="xl"
+                        textAlign={{ base: "left", sm: "center" }}
                       >
-                        <Text color="gray.600">
-                          No results match the selected segment rank.
+                        <Heading color="brand.700" fontSize="3xl">
+                          {highRankingSummary.percentage}%
+                        </Heading>
+                        <Text
+                          color="brand.800"
+                          fontSize="xs"
+                          fontWeight="semibold"
+                        >
+                          {highRankingSummary.count} rows rank in the top 30%
                         </Text>
-                      </Td>
-                    </Tr>
-                  )}
-                  {pagedRows.map((row, rowIndex) => {
-                    const absoluteIndex = pageStart + rowIndex;
+                      </Box>
+                    </Flex>
 
-                    return (
-                      <Tr
-                        cursor="pointer"
-                        key={absoluteIndex}
-                        onClick={() => openResultDetails(row)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            openResultDetails(row);
-                          }
-                        }}
-                        sx={{
-                          "&:hover .row-details-action": {
-                            opacity: 1,
-                          },
-                        }}
-                        tabIndex={0}
-                        _hover={{ bg: "gray.50" }}
-                        _focusVisible={{
-                          outline: "2px solid",
-                          outlineColor: "brand.500",
-                        }}
-                      >
-                        {resultColumns.map((column) => {
-                          const value = row[column];
-                          const rawScore = row.segment_affinity_score;
-                          const score =
-                            rawScore == null ? Number.NaN : Number(rawScore);
-                          const hasScore = Number.isFinite(score);
-                          const affinityColor = hasScore
-                            ? getAffinityColor(score)
-                            : "gray";
-                          const displayValue =
-                            value === null ||
-                            value === undefined ||
-                            value === ""
-                              ? "—"
-                              : typeof value === "object"
-                                ? JSON.stringify(value)
-                                : String(value);
+                    <Wrap p={{ base: 4, md: 5 }} spacing={2}>
+                      {resultsPersonaSignals.map((signal) => (
+                        <WrapItem key={signal.key}>
+                          <HStack
+                            bg="gray.50"
+                            borderWidth="1px"
+                            px={3}
+                            py={1.5}
+                            rounded="full"
+                            spacing={2}
+                          >
+                            <Box
+                              bg="brand.500"
+                              borderRadius="full"
+                              boxSize="7px"
+                              flexShrink={0}
+                            />
+                            <Text fontSize="sm" fontWeight="medium">
+                              {signal.label}
+                              <Text
+                                as="span"
+                                color="gray.500"
+                                fontSize="xs"
+                                fontWeight="normal"
+                              >
+                                {" · "}
+                                {signal.category}
+                              </Text>
+                            </Text>
+                          </HStack>
+                        </WrapItem>
+                      ))}
+                    </Wrap>
+                  </Box>
+                  <ResultsMap
+                    mapStyleUrl={MAP_STYLE_URL}
+                    results={filteredRows}
+                  />
+                </SimpleGrid>
 
-                          return (
-                            <Td key={column} maxW="280px" py={3}>
-                              {column === "segment_affinity_rank" ? (
-                                <HStack minW="180px" spacing={2}>
-                                  <Badge
-                                    colorScheme={affinityColor}
-                                    px={2.5}
-                                    py={1}
-                                    rounded="full"
-                                    textTransform="capitalize"
-                                    whiteSpace="nowrap"
-                                  >
-                                    {displayValue}
-                                  </Badge>
-                                  <Button
-                                    className="row-details-action"
-                                    colorScheme="brand"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openResultDetails(row);
-                                    }}
-                                    opacity={{ base: 1, md: 0 }}
-                                    size="xs"
-                                    transition="opacity 0.15s ease"
-                                    whiteSpace="nowrap"
-                                    _focusVisible={{
-                                      opacity: 1,
-                                      boxShadow: "outline",
-                                    }}
-                                  >
-                                    View details
-                                  </Button>
-                                </HStack>
-                              ) : column === "segment_affinity_score" &&
-                                hasScore ? (
-                                <HStack minW="150px" spacing={3}>
-                                  <Progress
-                                    colorScheme={affinityColor}
-                                    flex="1"
-                                    max={100}
-                                    minW="90px"
-                                    rounded="full"
-                                    size="sm"
-                                    value={Math.max(0, Math.min(100, score))}
-                                  />
-                                  <Text
-                                    fontWeight="semibold"
-                                    minW="28px"
-                                    textAlign="right"
-                                  >
-                                    {displayValue}
-                                  </Text>
-                                </HStack>
-                              ) : (
-                                <Text
-                                  overflow="hidden"
-                                  textOverflow="ellipsis"
-                                  whiteSpace="nowrap"
-                                >
-                                  {displayValue}
-                                </Text>
-                              )}
-                            </Td>
-                          );
-                        })}
+                <TableContainer
+                  bg="white"
+                  borderWidth="1px"
+                  maxW="100%"
+                  rounded="xl"
+                >
+                  <Table size="sm">
+                    <Thead bg="gray.50">
+                      <Tr>
+                        {resultColumns.map((column) => (
+                          <Th key={column} py={3} whiteSpace="nowrap">
+                            {column === "lad25nm"
+                              ? "Area"
+                              : column.replaceAll("_", " ")}
+                          </Th>
+                        ))}
                       </Tr>
-                    );
-                  })}
-                </Tbody>
-              </Table>
-            </TableContainer>
-
-            {filteredRows.length > 0 && (
-              <Flex
-                align="center"
-                justify="space-between"
-                mt={4}
-                direction={{ base: "column", sm: "row" }}
-                gap={3}
-              >
-                <Text color="gray.600" fontSize="sm">
-                  Showing {pageStart + 1}–
-                  {Math.min(pageStart + RESULTS_PER_PAGE, filteredRows.length)}{" "}
-                  of {filteredRows.length}
-                </Text>
-                <HStack>
-                  <Button
-                    isDisabled={currentPage === 1}
-                    onClick={() => setCurrentPage((page) => page - 1)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    Previous
-                  </Button>
-                  <HStack spacing={2}>
-                    <Text fontSize="sm">Page</Text>
-                    <Select
-                      aria-label="Select results page"
-                      onChange={(event) =>
-                        setCurrentPage(Number(event.target.value))
-                      }
-                      size="sm"
-                      value={currentPage}
-                      w="72px"
-                    >
-                      {Array.from({ length: totalPages }, (_, index) => {
-                        const page = index + 1;
+                    </Thead>
+                    <Tbody>
+                      {pagedRows.length === 0 && (
+                        <Tr>
+                          <Td
+                            colSpan={resultColumns.length}
+                            py={10}
+                            textAlign="center"
+                          >
+                            <Text color="gray.600">
+                              No results match the selected segment rank.
+                            </Text>
+                          </Td>
+                        </Tr>
+                      )}
+                      {pagedRows.map((row, rowIndex) => {
+                        const absoluteIndex = pageStart + rowIndex;
 
                         return (
-                          <option key={page} value={page}>
-                            {page}
-                          </option>
+                          <Tr
+                            cursor="pointer"
+                            key={absoluteIndex}
+                            onClick={() => openResultDetails(row)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                openResultDetails(row);
+                              }
+                            }}
+                            sx={{
+                              "&:hover .row-details-action": {
+                                opacity: 1,
+                              },
+                            }}
+                            tabIndex={0}
+                            _hover={{ bg: "gray.50" }}
+                            _focusVisible={{
+                              outline: "2px solid",
+                              outlineColor: "brand.500",
+                            }}
+                          >
+                            {resultColumns.map((column) => {
+                              const value = row[column];
+                              const rawScore = row.segment_affinity_score;
+                              const score =
+                                rawScore == null
+                                  ? Number.NaN
+                                  : Number(rawScore);
+                              const hasScore = Number.isFinite(score);
+                              const affinityColor = hasScore
+                                ? getAffinityColor(score)
+                                : "gray";
+                              const displayValue =
+                                value === null ||
+                                value === undefined ||
+                                value === ""
+                                  ? "—"
+                                  : typeof value === "object"
+                                    ? JSON.stringify(value)
+                                    : String(value);
+
+                              return (
+                                <Td key={column} maxW="280px" py={3}>
+                                  {column === "segment_affinity_rank" ? (
+                                    <HStack minW="180px" spacing={2}>
+                                      <Badge
+                                        colorScheme={affinityColor}
+                                        px={2.5}
+                                        py={1}
+                                        rounded="full"
+                                        textTransform="capitalize"
+                                        whiteSpace="nowrap"
+                                      >
+                                        {displayValue}
+                                      </Badge>
+                                      <Button
+                                        className="row-details-action"
+                                        colorScheme="brand"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openResultDetails(row);
+                                        }}
+                                        opacity={{ base: 1, md: 0 }}
+                                        size="xs"
+                                        transition="opacity 0.15s ease"
+                                        whiteSpace="nowrap"
+                                        _focusVisible={{
+                                          opacity: 1,
+                                          boxShadow: "outline",
+                                        }}
+                                      >
+                                        View details
+                                      </Button>
+                                    </HStack>
+                                  ) : column === "segment_affinity_score" &&
+                                    hasScore ? (
+                                    <HStack minW="150px" spacing={3}>
+                                      <Progress
+                                        colorScheme={affinityColor}
+                                        flex="1"
+                                        max={100}
+                                        minW="90px"
+                                        rounded="full"
+                                        size="sm"
+                                        value={Math.max(
+                                          0,
+                                          Math.min(100, score),
+                                        )}
+                                      />
+                                      <Text
+                                        fontWeight="semibold"
+                                        minW="28px"
+                                        textAlign="right"
+                                      >
+                                        {displayValue}
+                                      </Text>
+                                    </HStack>
+                                  ) : (
+                                    <Text
+                                      overflow="hidden"
+                                      textOverflow="ellipsis"
+                                      whiteSpace="nowrap"
+                                    >
+                                      {displayValue}
+                                    </Text>
+                                  )}
+                                </Td>
+                              );
+                            })}
+                          </Tr>
                         );
                       })}
-                    </Select>
-                    <Text fontSize="sm" whiteSpace="nowrap">
-                      of {totalPages}
-                    </Text>
-                  </HStack>
-                  <Button
-                    isDisabled={currentPage === totalPages}
-                    onClick={() => setCurrentPage((page) => page + 1)}
-                    size="sm"
-                    variant="outline"
+                    </Tbody>
+                  </Table>
+                </TableContainer>
+
+                {filteredRows.length > 0 && (
+                  <Flex
+                    align="center"
+                    justify="space-between"
+                    mt={4}
+                    direction={{ base: "column", sm: "row" }}
+                    gap={3}
                   >
-                    Next
-                  </Button>
-                </HStack>
-              </Flex>
-            )}
+                    <Text color="gray.600" fontSize="sm">
+                      Showing {pageStart + 1}–
+                      {Math.min(
+                        pageStart + RESULTS_PER_PAGE,
+                        filteredRows.length,
+                      )}{" "}
+                      of {filteredRows.length}
+                    </Text>
+                    <HStack>
+                      <Button
+                        isDisabled={currentPage === 1}
+                        onClick={() => setCurrentPage((page) => page - 1)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Previous
+                      </Button>
+                      <HStack spacing={2}>
+                        <Text fontSize="sm">Page</Text>
+                        <Select
+                          aria-label="Select results page"
+                          onChange={(event) =>
+                            setCurrentPage(Number(event.target.value))
+                          }
+                          size="sm"
+                          value={currentPage}
+                          w="72px"
+                        >
+                          {Array.from({ length: totalPages }, (_, index) => {
+                            const page = index + 1;
+
+                            return (
+                              <option key={page} value={page}>
+                                {page}
+                              </option>
+                            );
+                          })}
+                        </Select>
+                        <Text fontSize="sm" whiteSpace="nowrap">
+                          of {totalPages}
+                        </Text>
+                      </HStack>
+                      <Button
+                        isDisabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage((page) => page + 1)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        Next
+                      </Button>
+                    </HStack>
+                  </Flex>
+                )}
               </>
             ) : (
               <AreaResultsTable
