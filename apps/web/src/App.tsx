@@ -498,11 +498,14 @@ export default function App() {
     fields.delete("postcode");
     fields.delete("lat");
     fields.delete("long");
+    fields.delete("lad25cd");
+    fields.delete("lad25nm");
 
     return [
       "segment",
       "segment_affinity_rank",
       "segment_affinity_score",
+      "lad25nm",
       ...fields,
     ];
   }, [uploadRows]);
@@ -1456,7 +1459,9 @@ export default function App() {
                   <Tr>
                     {resultColumns.map((column) => (
                       <Th key={column} py={3} whiteSpace="nowrap">
-                        {column.replaceAll("_", " ")}
+                        {column === "lad25nm"
+                          ? "Area"
+                          : column.replaceAll("_", " ")}
                       </Th>
                     ))}
                   </Tr>

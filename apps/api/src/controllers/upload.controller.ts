@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import fs from "fs/promises";
 import { AppDataSource } from "../database/data-source";
+import { LadNameLookup } from "../database/entities/LadNameLookup";
 import { PostcodeLookup } from "../database/entities/Postcodelookup";
 import {
   CENSUS_VARIABLES,
@@ -146,10 +147,35 @@ export class UploadController {
       ];
       const postcodeRepository = AppDataSource.getRepository(PostcodeLookup);
 
-      const postcodeData = await postcodeRepository.find({
-        where: uniquePostcodes.map((pcd) => ({ pcd7: pcd })),
-        select: ["pcd7", "lsoa21cd", "msoa21cd", "lat", "long"],
-      });
+      const postcodeData =
+        uniquePostcodes.length > 0
+          ? await postcodeRepository
+              .createQueryBuilder("postcode")
+              .leftJoin(
+                LadNameLookup,
+                "ladName",
+                '"ladName"."lad25cd" = "postcode"."lad25cd"',
+              )
+              .select("postcode.pcd7", "pcd7")
+              .addSelect("postcode.lsoa21cd", "lsoa21cd")
+              .addSelect("postcode.msoa21cd", "msoa21cd")
+              .addSelect("postcode.lat", "lat")
+              .addSelect("postcode.long", "long")
+              .addSelect("postcode.lad25cd", "lad25cd")
+              .addSelect("ladName.lad25nm", "lad25nm")
+              .where("postcode.pcd7 IN (:...uniquePostcodes)", {
+                uniquePostcodes,
+              })
+              .getRawMany<{
+                pcd7: string;
+                lsoa21cd: string;
+                msoa21cd: string | null;
+                lat: string;
+                long: string;
+                lad25cd: string;
+                lad25nm: string | null;
+              }>()
+          : [];
 
       // Create postcode lookup maps
       const lsoaMap = new Map(postcodeData.map((p) => [p.pcd7, p.lsoa21cd]));
@@ -160,6 +186,15 @@ export class UploadController {
           {
             lat: p.lat,
             long: p.long,
+          },
+        ]),
+      );
+      const ladMap = new Map(
+        postcodeData.map((p) => [
+          p.pcd7,
+          {
+            lad25cd: p.lad25cd,
+            lad25nm: p.lad25nm,
           },
         ]),
       );
@@ -248,12 +283,15 @@ export class UploadController {
         const lsoaId = lsoaMap.get(cleanPostcode);
         const msoaId = msoaMap.get(cleanPostcode);
         const coordinates = coordinateMap.get(cleanPostcode);
+        const lad = ladMap.get(cleanPostcode);
 
         const enrichedRow: Record<string, any> = {
           ...row.data,
           postcode: row.postcode,
           lat: coordinates?.lat ?? null,
           long: coordinates?.long ?? null,
+          lad25cd: lad?.lad25cd ?? null,
+          lad25nm: lad?.lad25nm ?? null,
           lsoa_id: lsoaId || null,
           geography: lsoaId ? (geographyByCode.get(lsoaId) ?? null) : null,
           geography_code: lsoaId || null,
