@@ -2,6 +2,7 @@ import {
   ArrowForwardIcon,
   AtSignIcon,
   CalendarIcon,
+  CheckCircleIcon,
   DownloadIcon,
   EmailIcon,
   Search2Icon,
@@ -307,6 +308,15 @@ const useCases = [
     accent: "orange.500",
     background: "orange.50",
   },
+] as const;
+
+const answerableQuestions = [
+  "Which customers are the strongest match for my chosen persona?",
+  "Which UK areas have the highest concentration of high-affinity customers?",
+  "Where is my largest high-affinity audience located?",
+  "How many customers rank in the top 10%, 20% or 30%?",
+  "How does audience affinity compare from one area to another?",
+  "Which records should I prioritise for my next campaign?",
 ] as const;
 
 const frequentlyAskedQuestions = [
@@ -813,6 +823,81 @@ export default function App() {
                 </Flex>
               </Box>
             ))}
+          </SimpleGrid>
+        </Box>
+
+        <Box
+          as="section"
+          bg="brand.800"
+          color="white"
+          mt={{ base: 16, md: 20 }}
+          overflow="hidden"
+          p={{ base: 6, md: 10 }}
+          position="relative"
+          rounded="2xl"
+        >
+          <Box
+            bg="brand.700"
+            borderRadius="full"
+            h="280px"
+            opacity={0.45}
+            position="absolute"
+            right="-100px"
+            top="-150px"
+            w="280px"
+          />
+          <SimpleGrid
+            columns={{ base: 1, lg: 2 }}
+            position="relative"
+            spacing={{ base: 8, lg: 12 }}
+          >
+            <Box>
+              <Text
+                color="brand.200"
+                fontSize="sm"
+                fontWeight="semibold"
+                letterSpacing="0.08em"
+                textTransform="uppercase"
+              >
+                Questions answered
+              </Text>
+              <Heading
+                fontSize={{ base: "3xl", md: "4xl" }}
+                letterSpacing="-0.035em"
+                mt={2}
+              >
+                Turn audience data into clearer decisions
+              </Heading>
+              <Text
+                color="whiteAlpha.800"
+                fontSize="lg"
+                lineHeight="tall"
+                mt={4}
+              >
+                Segmentbase helps you move beyond postcodes to answer practical
+                questions about who to target and where to find them.
+              </Text>
+            </Box>
+
+            <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={3}>
+              {answerableQuestions.map((question) => (
+                <HStack
+                  align="start"
+                  bg="whiteAlpha.100"
+                  borderColor="whiteAlpha.200"
+                  borderWidth="1px"
+                  key={question}
+                  p={4}
+                  rounded="xl"
+                  spacing={3}
+                >
+                  <CheckCircleIcon color="brand.200" flexShrink={0} mt={1} />
+                  <Text fontSize="sm" fontWeight="medium" lineHeight="tall">
+                    {question}
+                  </Text>
+                </HStack>
+              ))}
+            </SimpleGrid>
           </SimpleGrid>
         </Box>
 
