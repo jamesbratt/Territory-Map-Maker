@@ -1717,26 +1717,27 @@ export default function App() {
           detailModal.onClose();
           setSelectedResultRow(null);
         }}
-        size="3xl"
+        scrollBehavior="inside"
+        size="5xl"
       >
         <ModalOverlay />
         <ModalContent mx={4}>
           <ModalHeader pb={2}>What drives this audience affinity?</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
-            <Box bg="gray.900" color="white" mb={5} p={5} rounded="xl">
+            <Box bg="gray.900" color="white" mb={3} p={4} rounded="xl">
               <Flex
                 align={{ base: "start", sm: "center" }}
                 direction={{ base: "column", sm: "row" }}
-                gap={5}
+                gap={3}
                 justify="space-between"
               >
                 <Box>
                   <Text color="whiteAlpha.700" fontSize="sm">
                     Overall segment affinity
                   </Text>
-                  <HStack mt={2} spacing={3}>
-                    <Heading fontSize="3xl">
+                  <HStack mt={1} spacing={3}>
+                    <Heading fontSize="2xl">
                       {selectedHasScore
                         ? `${selectedScore}/100`
                         : "Not available"}
@@ -1766,7 +1767,7 @@ export default function App() {
                   />
                 )}
               </Flex>
-              <Text color="whiteAlpha.800" fontSize="sm" mt={4} maxW="2xl">
+              <Text color="whiteAlpha.800" fontSize="sm" mt={3} maxW="3xl">
                 The overall score is the average of the available census-signal
                 percentiles below. A higher score means{" "}
                 <Text as="span" color="white" fontWeight="semibold">
@@ -1779,7 +1780,7 @@ export default function App() {
               </Text>
             </Box>
 
-            <Text color="gray.600" fontSize="sm" mb={4}>
+            <Text color="gray.600" fontSize="sm" mb={3}>
               Each available signal contributes equally. The census count is
               converted into a percentile from 0 to 100, while the rank
               describes how that percentile compares with the rest of the
@@ -1787,13 +1788,16 @@ export default function App() {
             </Text>
 
             {selectedCensusDetails.length > 0 ? (
-              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
+              <SimpleGrid
+                columns={{ base: 1, md: 2, xl: 3 }}
+                spacing={3}
+              >
                 {selectedCensusDetails.map((detail, detailIndex) => (
                   <Box
                     bg="gray.50"
                     borderWidth="1px"
                     key={`${detail.label}-${detailIndex}`}
-                    p={5}
+                    p={3}
                     rounded="lg"
                   >
                     <Text
@@ -1810,7 +1814,7 @@ export default function App() {
                     <Text color="brand.700" fontWeight="bold">
                       {detail.label}
                     </Text>
-                    <SimpleGrid columns={3} mt={4} spacing={3}>
+                    <SimpleGrid columns={3} mt={2} spacing={2}>
                       <Box>
                         <Text
                           color="gray.500"
@@ -1819,7 +1823,7 @@ export default function App() {
                         >
                           Census count
                         </Text>
-                        <Text fontWeight="semibold" mt={1}>
+                        <Text fontSize="sm" fontWeight="semibold" mt={0.5}>
                           {formatCensusDetailValue(
                             detail.value,
                             detail.category,
@@ -1834,7 +1838,7 @@ export default function App() {
                         >
                           Percentile
                         </Text>
-                        <Text fontWeight="semibold" mt={1}>
+                        <Text fontSize="sm" fontWeight="semibold" mt={0.5}>
                           {detail.affinity == null
                             ? "—"
                             : String(detail.affinity)}
@@ -1848,12 +1852,12 @@ export default function App() {
                         >
                           Relative rank
                         </Text>
-                        <Text fontWeight="semibold" mt={1}>
+                        <Text fontSize="sm" fontWeight="semibold" mt={0.5}>
                           {detail.rank == null ? "—" : String(detail.rank)}
                         </Text>
                       </Box>
                     </SimpleGrid>
-                    <Text color="gray.600" fontSize="xs" mt={4}>
+                    <Text color="gray.600" fontSize="xs" mt={2}>
                       This signal’s percentile contributes{" "}
                       {detail.affinity == null
                         ? "no points"
