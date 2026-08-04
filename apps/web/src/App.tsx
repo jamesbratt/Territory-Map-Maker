@@ -746,10 +746,9 @@ export default function App() {
               Turn customer postcodes into demographic audience insights
             </Heading>
             <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }}>
-              Segment your United Kingdom audience data into personas based on
-              age group, household type, occupation, household income and more,
-              so you can focus your marketing on audiences most likely to
-              convert.
+              Segment your audience data into personas based on age group,
+              household type, occupation, household income and more, so you can
+              focus your marketing on audiences most likely to convert.
             </Text>
 
             <Button
@@ -1895,10 +1894,7 @@ export default function App() {
             </Text>
 
             {selectedCensusDetails.length > 0 ? (
-              <SimpleGrid
-                columns={{ base: 1, md: 2, xl: 3 }}
-                spacing={3}
-              >
+              <SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={3}>
                 {selectedCensusDetails.map((detail, detailIndex) => (
                   <Box
                     bg="gray.50"
