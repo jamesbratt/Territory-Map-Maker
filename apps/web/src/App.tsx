@@ -55,7 +55,7 @@ import {
   Wrap,
   WrapItem,
 } from "@chakra-ui/react";
-import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { setWorkerUrl } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { AreaResultsTable } from "./components/AreaResultsTable";
@@ -64,7 +64,8 @@ import {
   ResultsViewSwitcher,
   type ResultsView,
 } from "./components/ResultsViewSwitcher";
-import { uploadCsv } from "./lib/api";
+import { rankLad, type Lad } from "./lib/api";
+import { LadAutocomplete } from "./components/LadAutocomplete";
 
 const RESULTS_PER_PAGE = 10;
 setWorkerUrl(`${import.meta.env.BASE_URL}maplibre-gl-worker.mjs`);
@@ -256,9 +257,9 @@ const personas = [
 const howItWorksSteps = [
   {
     number: "01",
-    title: "Upload data and choose a persona",
+    title: "Choose a district and persona",
     description:
-      "Choose a CSV containing your customer postcodes, then select the audience persona you want to find. Your original columns stay intact.",
+      "Choose a local authority district, then select the audience persona you want to find. We rank every postcode in the district.",
   },
   {
     number: "02",
@@ -338,14 +339,14 @@ const heroSlides = [
 
 const frequentlyAskedQuestions = [
   {
-    question: "What data do I need to upload?",
+    question: "How do I choose an area?",
     answer:
-      "Upload a CSV containing a column of UK postcodes. Your file can include any additional customer fields you need, and those original columns will be preserved in the enriched export.",
+      "Search for a local authority district by name or code, select it, and choose an audience persona.",
   },
   {
-    question: "Are there any file or row limits?",
+    question: "Which postcodes are included?",
     answer:
-      "Yes. Uploads must be CSV files no larger than 5 MB. We process the first 1,000 non-empty data rows in each file, so any additional rows will be ignored.",
+      "All postcodes mapped to the selected district in our dataset are included. Available census coverage determines which postcodes receive scores.",
   },
   {
     question: "How is the affinity score calculated?",
@@ -358,9 +359,9 @@ const frequentlyAskedQuestions = [
       "No. An affinity score reflects the demographic characteristics of the small, highly granular census area associated with a postcode. It indicates how strongly that local area matches the selected persona, but should not be treated as a statement or prediction about any individual person or household.",
   },
   {
-    question: "What happens to my uploaded data?",
+    question: "Do I need customer data?",
     answer:
-      "Your file is used to produce the segmentation results shown in the app. Avoid uploading unnecessary personal or sensitive information; a postcode and your own non-sensitive reference fields are enough. Your data is not stored or shared, and is deleted after processing.",
+      "No. Choose a district and a persona to explore audience affinity using postcode and census data.",
   },
   {
     question: "Can I use the results in other tools?",
@@ -375,20 +376,15 @@ const frequentlyAskedQuestions = [
 ] as const;
 
 export default function App() {
+  const [selectedLad, setSelectedLad] = useState<Lad | null>(null);
+  const [resultsLad, setResultsLad] = useState<Lad | null>(null);
   const currentYear = new Date().getFullYear();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const postcodeInputRef = useRef<HTMLInputElement>(null);
   const uploadSectionRef = useRef<HTMLDivElement>(null);
   const resultsSectionRef = useRef<HTMLDivElement>(null);
   const shouldScrollToResultsRef = useRef(false);
-  const postcodeModal = useDisclosure();
   const personaModal = useDisclosure();
   const detailModal = useDisclosure();
   const processingSuccessModal = useDisclosure();
-  const [postcodeColumn, setPostcodeColumn] = useState("");
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadedPostcodeColumn, setUploadedPostcodeColumn] = useState("");
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(
     null,
   );
@@ -597,36 +593,8 @@ export default function App() {
     URL.revokeObjectURL(downloadUrl);
   };
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) return;
-
-    setPendingFile(file);
-    setPostcodeColumn("");
-    setSelectedPersonaId(null);
-    setUploadResult(null);
-    postcodeModal.onOpen();
-  };
-
-  const handlePostcodeModalClose = () => {
-    setPendingFile(null);
-    setPostcodeColumn("");
-    postcodeModal.onClose();
-  };
-
-  const handlePostcodeContinue = () => {
-    if (!postcodeColumn.trim()) return;
-
-    postcodeModal.onClose();
-    personaModal.onOpen();
-  };
-
   const handleModalClose = () => {
     if (isUploading) return;
-    setPendingFile(null);
-    setPostcodeColumn("");
     setSelectedPersonaId(null);
     personaModal.onClose();
   };
@@ -640,9 +608,9 @@ export default function App() {
 
   const handleUpload = async () => {
     const persona = personas.find(({ id }) => id === selectedPersonaId);
-    if (!pendingFile || !persona) return;
+    if (!selectedLad || !persona) return;
 
-    trackAnalyticsEvent("csv_upload_click", {
+    trackAnalyticsEvent("lad_rank_click", {
       persona: persona.name,
     });
 
@@ -650,7 +618,7 @@ export default function App() {
     setUploadResult(null);
 
     try {
-      const rows = await uploadCsv(pendingFile, postcodeColumn.trim(), [
+      const rows = await rankLad(selectedLad.code, [
         ...persona.variables,
       ]);
       const rowsWithSegment = rows.map((row) => ({
@@ -658,22 +626,20 @@ export default function App() {
         ...row,
       }));
       shouldScrollToResultsRef.current = true;
-      setUploadedFile(pendingFile);
-      setUploadedPostcodeColumn(postcodeColumn.trim());
+      setResultsLad(selectedLad);
       setResultsPersonaId(persona.id);
       setResultsPersonaName(persona.name);
       setUploadRows(rowsWithSegment);
       setCurrentPage(1);
       setRankFilter("all");
       setSelectedResultRow(null);
-      setPendingFile(null);
       setSelectedPersonaId(null);
       personaModal.onClose();
-      processingSuccessModal.onOpen();
+      if (rows.length > 0) processingSuccessModal.onOpen();
     } catch (error) {
       setUploadResult({
         status: "error",
-        message: error instanceof Error ? error.message : "The upload failed.",
+        message: error instanceof Error ? error.message : "The district could not be ranked.",
       });
     } finally {
       setIsUploading(false);
@@ -682,7 +648,7 @@ export default function App() {
 
   const handleResultsPersonaChange = async (personaId: string) => {
     const persona = personas.find(({ id }) => id === personaId);
-    if (!uploadedFile || !persona || persona.id === resultsPersonaId) return;
+    if (!resultsLad || !persona || persona.id === resultsPersonaId) return;
 
     const previousPersonaId = resultsPersonaId;
     setResultsPersonaId(persona.id);
@@ -691,7 +657,7 @@ export default function App() {
     setUploadResult(null);
 
     try {
-      const rows = await uploadCsv(uploadedFile, uploadedPostcodeColumn, [
+      const rows = await rankLad(resultsLad.code, [
         ...persona.variables,
       ]);
       const rowsWithSegment = rows.map((row) => ({
@@ -705,7 +671,7 @@ export default function App() {
       setCurrentPage(1);
       setRankFilter("all");
       setSelectedResultRow(null);
-      processingSuccessModal.onOpen();
+      if (rows.length > 0) processingSuccessModal.onOpen();
     } catch (error) {
       setResultsPersonaId(previousPersonaId);
       setUploadResult({
@@ -713,7 +679,7 @@ export default function App() {
         message:
           error instanceof Error
             ? error.message
-            : "The file could not be reprocessed.",
+            : "The district could not be reprocessed.",
       });
     } finally {
       setIsUploading(false);
@@ -743,7 +709,7 @@ export default function App() {
               letterSpacing="-0.025em"
               lineHeight="1.08"
             >
-              Turn customer postcodes into demographic audience insights
+              Find the postcodes that fit your audience
             </Heading>
             <Text color="gray.600" fontSize={{ base: "lg", md: "xl" }}>
               Segment your audience data into personas based on age group,
@@ -1041,7 +1007,7 @@ export default function App() {
               From a postcode to audience insight
             </Heading>
             <Text color="gray.600" fontSize="lg" maxW="2xl" mt={3} mx="auto">
-              Turn a simple spreadsheet of customer postcodes into clear,
+              Turn a district selection into clear,
               actionable audience intelligence in three straightforward steps.
             </Text>
           </Box>
@@ -1155,7 +1121,7 @@ export default function App() {
               Find your audience
             </Heading>
             <Text color="gray.600" fontSize="lg" maxW="2xl" mt={3} mx="auto">
-              Upload your customer data to enrich every postcode with census
+              Choose a local authority district to rank its postcodes using census
               insight and audience affinity.
             </Text>
           </Box>
@@ -1170,29 +1136,15 @@ export default function App() {
             w="full"
           >
             <Stack spacing={4}>
-              <Input
-                accept=".csv,text/csv"
-                display="none"
-                onChange={handleFileChange}
-                ref={fileInputRef}
-                type="file"
-              />
-              <Button
-                colorScheme="brand"
-                onClick={() => fileInputRef.current?.click()}
-                rightIcon={<ArrowForwardIcon />}
-                size="lg"
-              >
-                Choose CSV file
-              </Button>
-              <Text color="gray.500" fontSize="sm" textAlign="center">
-                After choosing a file, you’ll identify its postcode column and
-                select an audience persona.
-              </Text>
+              <LadAutocomplete value={selectedLad} onChange={setSelectedLad} disabled={isUploading} />
+              <Button colorScheme="brand" isDisabled={!selectedLad || isUploading}
+                onClick={() => { setUploadResult(null); personaModal.onOpen(); }}
+                rightIcon={<ArrowForwardIcon />} size="lg">Choose audience persona</Button>
             </Stack>
           </Box>
         </Box>
 
+        {resultsLad && uploadRows.length === 0 && <Alert status="info"><AlertIcon />No postcodes found in {resultsLad.name}.</Alert>}
         {uploadRows.length > 0 && (
           <Box
             display="flex"
@@ -1220,7 +1172,7 @@ export default function App() {
                   </FormLabel>
                   <Select
                     bg="white"
-                    isDisabled={isUploading || !uploadedFile}
+                    isDisabled={isUploading || !resultsLad}
                     onChange={(event) => {
                       void handleResultsPersonaChange(event.target.value);
                     }}
@@ -1784,13 +1736,13 @@ export default function App() {
               </Heading>
               <Text color="gray.700" fontWeight="semibold" mt={1}>
                 {highRankingSummary.count} of {uploadRows.length}{" "}
-                {uploadRows.length === 1 ? "contact ranks" : "contacts rank"} in
+                {uploadRows.length === 1 ? "postcode ranks" : "postcodes rank"} in
                 the top 30% for {resultsPersonaName ?? "this audience"}
               </Text>
             </Box>
 
             <Text color="gray.600" fontSize="sm" lineHeight="tall" mt={5}>
-              Start with these contacts in your next email, direct-mail or sales
+              Start with these postcodes in your next email, direct-mail or sales
               campaign, then export the enriched CSV to put the insight to work.
             </Text>
           </Box>
@@ -1990,58 +1942,6 @@ export default function App() {
       </Modal>
 
       <Modal
-        initialFocusRef={postcodeInputRef}
-        isCentered
-        isOpen={postcodeModal.isOpen}
-        onClose={handlePostcodeModalClose}
-        size="md"
-      >
-        <ModalOverlay />
-        <ModalContent
-          as="form"
-          mx={4}
-          onSubmit={(event) => {
-            event.preventDefault();
-            handlePostcodeContinue();
-          }}
-        >
-          <ModalHeader pb={2}>Identify the postcode column</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <Text color="gray.600" mb={5}>
-              Enter the exact column header containing postcodes in{" "}
-              <Text as="span" fontWeight="semibold">
-                {pendingFile?.name}
-              </Text>
-              .
-            </Text>
-            <FormControl isRequired>
-              <FormLabel fontSize="sm">Postcode column header</FormLabel>
-              <Input
-                onChange={(event) => setPostcodeColumn(event.target.value)}
-                placeholder="For example, postcode"
-                ref={postcodeInputRef}
-                value={postcodeColumn}
-              />
-            </FormControl>
-          </ModalBody>
-          <ModalFooter>
-            <Button mr={3} onClick={handlePostcodeModalClose} variant="ghost">
-              Cancel
-            </Button>
-            <Button
-              colorScheme="brand"
-              isDisabled={!postcodeColumn.trim()}
-              rightIcon={<ArrowForwardIcon />}
-              type="submit"
-            >
-              Continue
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-      <Modal
         closeOnOverlayClick={!isUploading}
         isCentered
         isOpen={personaModal.isOpen}
@@ -2056,9 +1956,9 @@ export default function App() {
             <Text color="gray.600" mb={5}>
               Select the audience you want to identify in{" "}
               <Text as="span" fontWeight="semibold">
-                {pendingFile?.name}
+                {selectedLad?.name}
               </Text>
-              . We’ll enrich the file with the most relevant census signals.
+              . We will rank its postcodes using the most relevant census signals.
             </Text>
 
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -2118,11 +2018,11 @@ export default function App() {
               colorScheme="brand"
               isDisabled={!selectedPersonaId}
               isLoading={isUploading}
-              loadingText="Processing CSV"
+              loadingText="Ranking postcodes"
               onClick={handleUpload}
               rightIcon={<ArrowForwardIcon />}
             >
-              Upload with persona
+              Rank district postcodes
             </Button>
           </ModalFooter>
         </ModalContent>

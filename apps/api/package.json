@@ -4,6 +4,7 @@
   "private": true,
   "description": "Segment Express API",
   "scripts": {
+    "test": "node --test -r ts-node/register tests/lad.test.cjs",
     "dev": "ts-node-dev --respawn --transpile-only --inspect=9229 src/server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",

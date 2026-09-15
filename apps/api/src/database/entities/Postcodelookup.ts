@@ -1,6 +1,7 @@
 import { Column, Entity, PrimaryGeneratedColumn, Index } from "typeorm";
 
 @Index("IDX_UPLOAD_PCD7", ["pcd7"])
+@Index("IDX_POSTCODE_LAD", ["lad25cd"])
 @Entity({ name: "postcodelookup" })
 export class PostcodeLookup {
   @PrimaryGeneratedColumn()

@@ -667,7 +667,8 @@ export const CENSUS_VARIABLES =
 
 export const VALID_CENSUS_VARIABLES = Object.keys(CENSUS_VARIABLES);
 
-// Function to calculate percentile
+// allValues must be sorted ascending. Find the first value >= the input,
+// preserving the strictly-below percentile definition, including ties.
 export const calculatePercentile = (
   value: number | null,
   allValues: number[],
@@ -675,7 +676,14 @@ export const calculatePercentile = (
   if (value === null || value === undefined) {
     return null;
   }
-  const countBelow = allValues.filter((v) => v < value).length;
+  let low = 0;
+  let high = allValues.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (allValues[middle] < value) low = middle + 1;
+    else high = middle;
+  }
+  const countBelow = low;
   return Math.round((countBelow / allValues.length) * 100);
 };
 
