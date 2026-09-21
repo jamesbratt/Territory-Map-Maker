@@ -114,8 +114,8 @@ h2 {
   place-items: center;
   margin-right: 10px;
   border-radius: 9px;
-  background: #123f3b;
-  color: #ccf2d9;
+  background: #25282d;
+  color: #ffffff;
   width: 34px;
   height: 34px;
   font-size: 28px;
@@ -185,7 +185,7 @@ h2 {
 .primary {
   border: 0;
   border-radius: 7px;
-  background: #163f3a;
+  background: #30343b;
   color: white;
   font-weight: 600;
   padding: 11px 16px;
@@ -210,9 +210,9 @@ h2 {
   color: #6a7d8b;
 }
 .territory-card.selected {
-  background: #f0f7f5;
-  border-color: #64978a;
-  box-shadow: 0 0 0 1px #64978a;
+  background: #f4f5f6;
+  border-color: #9ca3af;
+  box-shadow: 0 0 0 1px #9ca3af;
 }
 .swatch {
   width: 13px;
@@ -243,7 +243,7 @@ h2 {
 }
 .empty-icon {
   font-size: 40px;
-  color: #90aaa4;
+  color: #9ca3af;
   display: block;
   margin-bottom: 12px;
 }
@@ -259,7 +259,7 @@ h2 {
 .text-button {
   border: 0;
   background: transparent;
-  color: #217565;
+  color: #4b5563;
   font-weight: 600;
 }
 .colour-label {
@@ -269,12 +269,12 @@ h2 {
   justify-content: space-between;
 }
 .selection-hint {
-  background: #edf7f3;
-  border: 1px solid #d8ebe3;
+  background: #f5f6f7;
+  border: 1px solid #e5e7eb;
   padding: 12px;
   border-radius: 7px;
   font-size: 12px;
-  color: #45695e;
+  color: #606773;
 }
 .district-chips {
   display: flex;
@@ -364,7 +364,7 @@ h2 {
   border-radius: 4px;
 }
 .editing {
-  border-color: #b8d6ca;
+  border-color: #c9ced5;
 }
 .map-info {
   position: absolute;
@@ -411,8 +411,8 @@ h2 {
 .spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid #dbe8e4;
-  border-top-color: #217565;
+  border: 3px solid #e5e7eb;
+  border-top-color: #4b5563;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 20px;
@@ -490,8 +490,8 @@ h2 {
   border-radius: 4px;
   padding: 5px 7px;
   margin-right: 6px;
-  background: #e7eeeb;
-  color: #163f3a;
+  background: #eef0f2;
+  color: #30343b;
   cursor: pointer;
 }
 .location-panel select {
@@ -541,7 +541,7 @@ h2 {
 }
 .visibility-toggle input {
   width: auto;
-  accent-color: #163f3a;
+  accent-color: #30343b;
 }
 .location-actions {
   display: flex;
@@ -667,7 +667,7 @@ h2 {
 }
 .sidebar-tabs [aria-selected="true"] {
   background: white;
-  color: #163f3a;
+  color: #30343b;
   box-shadow: 0 1px 4px #182b3b14;
 }
 .sidebar [role="tabpanel"][hidden] {

@@ -19,6 +19,8 @@ import {
 import { districtsInRadius, type RadiusSelection } from "./lib/radius";
 import { RadiusResults } from "./components/RadiusResults";
 import type { CensusChoropleth } from "./lib/choropleth";
+import { LandingHero, LandingFeatures, LandingUseCases, LandingFooter } from "./components/LandingSections";
+import "./landing.css";
 
 export default function App() {
   const [drawingRadius, setDrawingRadius] = useState(false);
@@ -97,25 +99,28 @@ export default function App() {
   }, []);
   const assigned = new Set(territories.flatMap((t) => t.districts)).size;
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <a className="brand" href="/" aria-label="Territory maker home">
-          <span className="brand-icon">▦</span>territory
-          <span className="brand-light">maker</span>
+    <div className="app-shell landing-page" id="top">
+      <a className="skip-to-map" href="#map-workspace">Skip to map workspace</a>
+      <header className="app-header landing-header">
+        <a className="brand" href="#top" aria-label="territorymapmaker home">
+          territory
+          <span className="brand-light">mapmaker</span>
         </a>
-        <span className="market-badge">UNITED KINGDOM</span>
-        <div className="header-stats">
-          <strong>{assigned.toLocaleString("en-GB")}</strong> districts assigned
-          <span className="divider" />
-          {territories.length} territories
-        </div>
+        <nav className="landing-nav" aria-label="Main navigation"><a href="#features">Features</a><a href="#use-cases">Use cases</a><a className="landing-button" href="#map-workspace">Open the map <span aria-hidden="true">↗</span></a></nav>
       </header>
+      <main>
+      <LandingHero />
+      <LandingFeatures />
+      <section className="landing-map-section" id="map-workspace" aria-labelledby="workspace-title" tabIndex={-1}>
+        <div className="landing-container landing-section-heading"><div><h2 id="workspace-title">Create your territory map</h2></div><p>Create a territory, upload your sales locations<br />or explore a 10 km radius.</p></div>
+        <div className="landing-workspace-frame">
+        <div className="workspace-toolbar"><span><span className="workspace-status-dot" /> UK territory workspace</span><div className="header-stats"><strong>{assigned.toLocaleString("en-GB")}</strong> districts assigned<span className="divider" />{territories.length} territories</div></div>
       {storageError && (
         <div className="storage-error" role="alert">
           {storageError}
         </div>
       )}
-      <main className="workspace">
+      <div className="workspace">
         {boundaries ? (
           <TerritoryMap
             choropleth={choropleth?.selection === radius ? choropleth : null}
@@ -210,7 +215,13 @@ export default function App() {
             }}
           />
         )}
+      </div>
+        </div>
+        <p className="workspace-page-note">Territories are saved in this browser. Uploaded locations stay until you refresh. Census figures are estimates.</p>
+      </section>
+      <LandingUseCases />
       </main>
+      <LandingFooter />
     </div>
   );
 }

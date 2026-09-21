@@ -21,7 +21,7 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
     if (!container.current) return;
     let map: Map;
     try {
-      map = new Map({ container: container.current, center: [-3.5, 55], zoom: 5, minZoom: 3,
+      map = new Map({ container: container.current, center: [-3.5, 55], zoom: 5, minZoom: 3, cooperativeGestures: true,
         style: { version: 8, sources: { basemap: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' } }, layers: [{ id: 'basemap', type: 'raster', source: 'basemap', paint: { 'raster-saturation': -0.8, 'raster-opacity': 0.65 } }] } });
     } catch { setError('The map could not start. Check that WebGL is enabled in your browser.'); return; }
     mapRef.current = map;
