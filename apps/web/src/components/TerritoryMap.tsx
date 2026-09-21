@@ -3,15 +3,16 @@ import { Map, NavigationControl, Popup, LngLatBounds, type GeoJSONSource, type E
 import type { FeatureCollection } from 'geojson';
 import type { Territory } from '../lib/territories';
 import { isMappedLocation, type LocationLayer } from '../lib/locations';
+import { radiusCircle, type RadiusSelection } from '../lib/radius';
 
-type Props = { boundaries: FeatureCollection; territories: Territory[]; activeId: string | null; onToggle: (district: string) => void; locations: LocationLayer | null; locationZoom: number };
-export function TerritoryMap({ boundaries, territories, activeId, onToggle, locations, locationZoom }: Props) {
+type Props = { boundaries: FeatureCollection; territories: Territory[]; activeId: string | null; onToggle: (district: string) => void; locations: LocationLayer | null; locationZoom: number; radius: RadiusSelection | null; drawingRadius: boolean; onStartRadius: () => void; onCancelRadius: () => void; onRadiusCenter: (center: [number, number]) => void };
+export function TerritoryMap({ boundaries, territories, activeId, onToggle, locations, locationZoom, radius, drawingRadius, onStartRadius, onCancelRadius, onRadiusCenter }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const popup = useRef<Popup | null>(null);
   const lastZoom = useRef(0);
-  const latest = useRef({ activeId, onToggle });
-  latest.current = { activeId, onToggle };
+  const latest = useRef({ activeId, onToggle, drawingRadius, onRadiusCenter });
+  latest.current = { activeId, onToggle, drawingRadius, onRadiusCenter };
   const [loaded, setLoaded] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -30,6 +31,11 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
       map.addLayer({ id: 'district-fill', type: 'fill', source: 'districts', paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.15 } });
       map.addLayer({ id: 'district-line', type: 'line', source: 'districts', paint: { 'line-color': '#64748b', 'line-width': 0.7, 'line-opacity': 0.65 } });
       map.addLayer({ id: 'district-hover', type: 'line', source: 'districts', filter: ['==', ['get', 'district_code'], ''], paint: { 'line-color': '#0f172a', 'line-width': 2 } });
+      map.addLayer({ id: 'radius-districts', type: 'line', source: 'districts', filter: ['in', ['get', 'district_code'], ['literal', []]], paint: { 'line-color': '#7c3aed', 'line-width': 2 } });
+      map.addSource('radius', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'radius-fill', type: 'fill', source: 'radius', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.12 } });
+      map.addLayer({ id: 'radius-outline', type: 'line', source: 'radius', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'line-color': '#6d28d9', 'line-width': 3, 'line-dasharray': [3, 2] } });
+      map.addLayer({ id: 'radius-center', type: 'circle', source: 'radius', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 6, 'circle-color': '#6d28d9', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
       map.addSource('locations', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'location-markers', type: 'circle', source: 'locations', paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 12, 8],
@@ -38,11 +44,13 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
       setLoaded(true);
     });
     map.on('click', 'district-fill', (event) => {
+      if (latest.current.drawingRadius) return;
       if (map.queryRenderedFeatures(event.point, { layers: ['location-markers'] }).length) return;
       const code = event.features?.[0]?.properties.district_code;
       if (code && latest.current.activeId) latest.current.onToggle(String(code));
     });
     map.on('click', 'location-markers', (event) => {
+      if (latest.current.drawingRadius) return;
       const features = map.queryRenderedFeatures(event.point, { layers: ['location-markers'] });
       const feature = features[0];
       if (!feature || feature.geometry.type !== 'Point') return;
@@ -50,6 +58,9 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
       popup.current = new Popup({ offset: 10 }).setLngLat(feature.geometry.coordinates as [number, number])
         .setText(`${feature.properties.postcode} · CSV row ${feature.properties.row}${features.length > 1 ? ` · ${features.length} locations here` : ''}`)
         .addTo(map);
+    });
+    map.on('click', (event) => {
+      if (latest.current.drawingRadius) latest.current.onRadiusCenter([event.lngLat.lng, event.lngLat.lat]);
     });
     map.on('mouseenter', 'location-markers', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'location-markers', () => { map.getCanvas().style.cursor = ''; });
@@ -64,6 +75,19 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
     const resize = new ResizeObserver(() => map.resize()); resize.observe(container.current);
     return () => { resize.disconnect(); popup.current?.remove(); map.remove(); mapRef.current = null; setLoaded(false); };
   }, [boundaries]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+    popup.current?.remove();
+    const circle = radius ? radiusCircle(radius.center) : null;
+    const data: FeatureCollection = { type: 'FeatureCollection', features: circle && radius ? [circle, { type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: radius.center } }] : [] };
+    void (map.getSource('radius') as GeoJSONSource).setData(data).catch(() => setError('The radius could not be displayed. Please try again.'));
+    map.setFilter('radius-districts', ['in', ['get', 'district_code'], ['literal', radius?.districts ?? []]]);
+    if (circle) {
+      const bounds = circle.geometry.coordinates[0].reduce((bounds, point) => bounds.extend(point as [number, number]), new LngLatBounds());
+      map.fitBounds(bounds, { padding: { top: 110, bottom: 95, left: 45, right: 45 }, maxZoom: 12 });
+    }
+  }, [radius, loaded]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded) return;
@@ -99,9 +123,10 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
   }, [territories, activeId, loaded]);
   const active = territories.find((t) => t.id === activeId);
   const owner = territories.find((t) => hover && t.districts.includes(hover));
-  return <section className="map-panel" aria-label="UK postcode district map">
+  return <section className={`map-panel ${drawingRadius ? 'placing-radius' : ''}`} aria-label="UK postcode district map">
     <div className="map-canvas" ref={container} />
-    <div className={`map-mode ${active ? 'editing' : ''}`} role="status"><span className="mode-dot" style={{ background: active?.color }} /><span>{active ? `Selecting for ${active.name}` : 'Explore UK postcode districts'}<small>{active ? 'Click districts to add or remove them' : 'Select a territory to start assigning districts'}</small></span>{active && <kbd>Click to select</kbd>}</div>
+    <div className={`map-mode ${active ? 'editing' : ''}`} role="status"><span className="mode-dot" style={{ background: drawingRadius || radius ? '#7c3aed' : active?.color }} /><span>{drawingRadius ? 'Click the map to place your 10 km radius' : radius ? '10 km radius · District demographics' : active ? `Selecting for ${active.name}` : 'Explore UK postcode districts'}<small>{drawingRadius ? 'Choose a centre point. Press Escape to cancel.' : radius ? 'Outlined districts intersect the circle · Age population' : active ? 'Click districts to add or remove them' : 'Select a territory or explore a 10 km radius'}</small></span></div>
+    <div className="radius-map-actions">{drawingRadius ? <><button className="primary" onClick={() => { const center = mapRef.current?.getCenter(); if (center) onRadiusCenter([center.lng, center.lat]); }}>Use map centre</button><button className="radius-cancel" onClick={onCancelRadius}>Cancel</button></> : <button className="primary" disabled={!loaded} onClick={onStartRadius}>{radius ? 'Move 10 km radius' : '◎ Explore 10 km radius'}</button>}</div>
     {error && <div className="map-error" role="alert">{error}</div>}
     {!loaded && !error && <div className="map-loading" role="status">Preparing the map…</div>}
     <div className="map-info"><strong>{hover || 'United Kingdom'}</strong><span>{hover ? owner?.name || 'Unassigned district' : `${boundaries.features.length.toLocaleString('en-GB')} postcode districts`}</span></div>
