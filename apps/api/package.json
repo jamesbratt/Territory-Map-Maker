@@ -5,7 +5,7 @@
   "description": "Segment Express API",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --inspect=9229 src/server.ts",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-boundaries.cjs",
     "typecheck": "tsc --noEmit",
     "start": "node dist/server.js",
     "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
