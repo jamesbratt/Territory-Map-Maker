@@ -40,6 +40,15 @@ Qualifications and Household income. Switching signals retains the radius and
 cancels the previous browser request. Some census categories include overlapping
 subtotals, so their rows must not all be summed together.
 
+The **Census variable** selector below the signal defaults to **All variables**.
+Choose a variable to display only that row for each district and colour the radius
+districts by its estimated value (counts or annual income, not percentage share).
+The map uses five equal intervals from the lowest to highest available value;
+grey indicates no data and partial-coverage values are identified on hover.
+All-equal values use one colour. Returning to All variables or closing the radius
+clears the choropleth. Changing signals resets the variable selection; loading
+and failed requests clear the previous overlay.
+
 `GET /api/demographics/signals` lists the available signals and their geography,
 units and aggregation type. `POST /api/demographics/districts?signal=household-income`
 accepts the same JSON district list as the age endpoint. Omitting `signal` defaults

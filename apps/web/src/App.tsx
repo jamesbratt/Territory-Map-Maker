@@ -18,10 +18,12 @@ import {
 } from "./lib/territory-counts";
 import { districtsInRadius, type RadiusSelection } from "./lib/radius";
 import { RadiusResults } from "./components/RadiusResults";
+import type { CensusChoropleth } from "./lib/choropleth";
 
 export default function App() {
   const [drawingRadius, setDrawingRadius] = useState(false);
   const [radius, setRadius] = useState<RadiusSelection | null>(null);
+  const [choropleth, setChoropleth] = useState<CensusChoropleth | null>(null);
   function startRadius() {
     setActiveId(null);
     setDrawingRadius(true);
@@ -116,6 +118,7 @@ export default function App() {
       <main className="workspace">
         {boundaries ? (
           <TerritoryMap
+            choropleth={choropleth?.selection === radius ? choropleth : null}
             radius={radius}
             drawingRadius={drawingRadius}
             onStartRadius={startRadius}
@@ -199,6 +202,7 @@ export default function App() {
         </div>
         {radius && (
           <RadiusResults
+            onChoroplethChange={setChoropleth}
             selection={radius}
             onClose={() => {
               setRadius(null);

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   getCensusSignals,
   getDistrictCensus,
@@ -7,14 +7,18 @@ import {
   type CensusResponse,
 } from "../lib/demographics";
 import type { RadiusSelection } from "../lib/radius";
+import { createChoropleth, type CensusChoropleth } from "../lib/choropleth";
 
 type Props = {
   selection: RadiusSelection;
   onClose: () => void;
+  onChoroplethChange: (data: CensusChoropleth | null) => void;
 };
-export function RadiusResults({ selection, onClose }: Props) {
+export function RadiusResults({ selection, onClose, onChoroplethChange }: Props) {
   const [signals, setSignals] = useState<CensusSignal[]>([POPULATION_SIGNAL]);
   const [selectedSignal, setSelectedSignal] = useState("population");
+  const [selectedVariable, setSelectedVariable] = useState("");
+  const resultSelection = useRef<RadiusSelection | null>(null);
   const [catalogueError, setCatalogueError] = useState("");
   const [catalogueAttempt, setCatalogueAttempt] = useState(0);
   const [result, setResult] = useState<CensusResponse | null>(null);
@@ -53,6 +57,7 @@ export function RadiusResults({ selection, onClose }: Props) {
     getDistrictCensus(selection, chosen, controller.signal)
       .then((data) => {
         if (!controller.signal.aborted) {
+          resultSelection.current = selection;
           setResult(data);
           setLoading(false);
         }
@@ -65,7 +70,14 @@ export function RadiusResults({ selection, onClose }: Props) {
       });
     return () => controller.abort();
   }, [selection, chosen, attempt]);
-  const rows = result?.signal.key === selectedSignal ? result.districts : [];
+  const currentResult = resultSelection.current === selection && result?.signal.key === selectedSignal ? result : null;
+  const rows = currentResult?.districts ?? [];
+  const variables = [...new Map(rows.flatMap((row) => row.metrics).map((metric) => [metric.key, metric.label])).entries()];
+  const choropleth = useMemo(() => !loading && !error && currentResult
+    ? createChoropleth(selection, currentResult, selectedVariable) : null,
+    [selection, currentResult, selectedVariable, loading, error]);
+  useEffect(() => { onChoroplethChange(choropleth); }, [choropleth, onChoroplethChange]);
+  useEffect(() => () => onChoroplethChange(null), [onChoroplethChange]);
   const format = (value: number | null) =>
     value === null
       ? "—"
@@ -137,6 +149,7 @@ export function RadiusResults({ selection, onClose }: Props) {
           value={selectedSignal}
           onChange={(event) => {
             setSelectedSignal(event.target.value);
+            setSelectedVariable("");
             setResult(null);
             setLoading(true);
             setError("");
@@ -149,6 +162,14 @@ export function RadiusResults({ selection, onClose }: Props) {
             </option>
           ))}
         </select>
+        <label className="census-variable-label" htmlFor="census-variable">Census variable</label>
+        <select id="census-variable" className="census-select" value={selectedVariable}
+          disabled={loading || !!error || !variables.length}
+          onChange={(event) => setSelectedVariable(event.target.value)}>
+          <option value="">All variables</option>
+          {variables.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+        </select>
+        {selectedVariable && !loading && !error && <p className="location-note">Map colours show the selected variable’s estimated {income ? 'annual income' : chosen.unit}. Darker districts have higher values.</p>}
         {catalogueError && (
           <div className="age-partial" role="alert">
             {catalogueError}{" "}
@@ -204,7 +225,7 @@ export function RadiusResults({ selection, onClose }: Props) {
                 </p>
               ) : (
                 <>
-                  {!income && (
+                  {!income && !selectedVariable && (
                     <div className="age-population">
                       <span>
                         Estimated {chosen.totalLabel.toLowerCase()}
@@ -236,7 +257,7 @@ export function RadiusResults({ selection, onClose }: Props) {
                       </tr>
                     </thead>
                     <tbody>
-                      {row.metrics.map((metric) => (
+                      {row.metrics.filter((metric) => !selectedVariable || metric.key === selectedVariable).map((metric) => (
                         <tr key={metric.key}>
                           <th scope="row">{metric.label}</th>
                           <td>{format(metric.value)}</td>

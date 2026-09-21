@@ -4,9 +4,10 @@ import type { FeatureCollection } from 'geojson';
 import type { Territory } from '../lib/territories';
 import { isMappedLocation, type LocationLayer } from '../lib/locations';
 import { radiusCircle, type RadiusSelection } from '../lib/radius';
+import { CHOROPLETH_COLORS, NO_DATA_COLOR, formatChoroplethValue, type CensusChoropleth } from '../lib/choropleth';
 
-type Props = { boundaries: FeatureCollection; territories: Territory[]; activeId: string | null; onToggle: (district: string) => void; locations: LocationLayer | null; locationZoom: number; radius: RadiusSelection | null; drawingRadius: boolean; onStartRadius: () => void; onCancelRadius: () => void; onRadiusCenter: (center: [number, number]) => void };
-export function TerritoryMap({ boundaries, territories, activeId, onToggle, locations, locationZoom, radius, drawingRadius, onStartRadius, onCancelRadius, onRadiusCenter }: Props) {
+type Props = { choropleth: CensusChoropleth | null; boundaries: FeatureCollection; territories: Territory[]; activeId: string | null; onToggle: (district: string) => void; locations: LocationLayer | null; locationZoom: number; radius: RadiusSelection | null; drawingRadius: boolean; onStartRadius: () => void; onCancelRadius: () => void; onRadiusCenter: (center: [number, number]) => void };
+export function TerritoryMap({ boundaries, territories, activeId, onToggle, locations, locationZoom, radius, drawingRadius, onStartRadius, onCancelRadius, onRadiusCenter, choropleth }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const popup = useRef<Popup | null>(null);
@@ -29,6 +30,7 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
     map.on('load', () => {
       map.addSource('districts', { type: 'geojson', data: boundaries });
       map.addLayer({ id: 'district-fill', type: 'fill', source: 'districts', paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.15 } });
+      map.addLayer({ id: 'census-fill', type: 'fill', source: 'districts', filter: ['in', ['get', 'district_code'], ['literal', []]], paint: { 'fill-color': NO_DATA_COLOR, 'fill-opacity': 0.92 } });
       map.addLayer({ id: 'district-line', type: 'line', source: 'districts', paint: { 'line-color': '#64748b', 'line-width': 0.7, 'line-opacity': 0.65 } });
       map.addLayer({ id: 'district-hover', type: 'line', source: 'districts', filter: ['==', ['get', 'district_code'], ''], paint: { 'line-color': '#0f172a', 'line-width': 2 } });
       map.addLayer({ id: 'radius-districts', type: 'line', source: 'districts', filter: ['in', ['get', 'district_code'], ['literal', []]], paint: { 'line-color': '#7c3aed', 'line-width': 2 } });
@@ -91,6 +93,14 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded) return;
+    map.setFilter('census-fill', ['in', ['get', 'district_code'], ['literal', choropleth ? radius?.districts ?? [] : []]]);
+    map.setPaintProperty('census-fill', 'fill-color', ['coalesce', ['get', ['get', 'district_code'], ['literal', choropleth?.colors ?? {}]], NO_DATA_COLOR]);
+    // Keep the radius outline, but avoid tinting the choropleth inside the circle.
+    map.setPaintProperty('radius-fill', 'fill-opacity', choropleth ? 0 : 0.12);
+  }, [choropleth, radius, loaded]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
     popup.current?.remove();
     const rows = locations?.rows.filter(isMappedLocation) ?? [];
     const source = map.getSource('locations') as GeoJSONSource;
@@ -123,13 +133,26 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
   }, [territories, activeId, loaded]);
   const active = territories.find((t) => t.id === activeId);
   const owner = territories.find((t) => hover && t.districts.includes(hover));
-  return <section className={`map-panel ${drawingRadius ? 'placing-radius' : ''}`} aria-label="UK postcode district map">
+  return <section className={`map-panel ${drawingRadius ? 'placing-radius' : ''} ${choropleth ? 'has-choropleth' : ''}`} aria-label="UK postcode district map">
     <div className="map-canvas" ref={container} />
-    <div className={`map-mode ${active ? 'editing' : ''}`} role="status"><span className="mode-dot" style={{ background: drawingRadius || radius ? '#7c3aed' : active?.color }} /><span>{drawingRadius ? 'Click the map to place your 10 km radius' : radius ? '10 km radius · District demographics' : active ? `Selecting for ${active.name}` : 'Explore UK postcode districts'}<small>{drawingRadius ? 'Choose a centre point. Press Escape to cancel.' : radius ? 'Outlined districts intersect the circle · Age population' : active ? 'Click districts to add or remove them' : 'Select a territory or explore a 10 km radius'}</small></span></div>
+    <div className={`map-mode ${active ? 'editing' : ''}`} role="status"><span className="mode-dot" style={{ background: drawingRadius || radius ? '#7c3aed' : active?.color }} /><span>{drawingRadius ? 'Click the map to place your 10 km radius' : radius ? '10 km radius · District demographics' : active ? `Selecting for ${active.name}` : 'Explore UK postcode districts'}<small>{drawingRadius ? 'Choose a centre point. Press Escape to cancel.' : radius ? 'Outlined districts intersect the circle · Census signals' : active ? 'Click districts to add or remove them' : 'Select a territory or explore a 10 km radius'}</small></span></div>
     <div className="radius-map-actions">{drawingRadius ? <><button className="primary" onClick={() => { const center = mapRef.current?.getCenter(); if (center) onRadiusCenter([center.lng, center.lat]); }}>Use map centre</button><button className="radius-cancel" onClick={onCancelRadius}>Cancel</button></> : <button className="primary" disabled={!loaded} onClick={onStartRadius}>{radius ? 'Move 10 km radius' : '◎ Explore 10 km radius'}</button>}</div>
     {error && <div className="map-error" role="alert">{error}</div>}
     {!loaded && !error && <div className="map-loading" role="status">Preparing the map…</div>}
-    <div className="map-info"><strong>{hover || 'United Kingdom'}</strong><span>{hover ? owner?.name || 'Unassigned district' : `${boundaries.features.length.toLocaleString('en-GB')} postcode districts`}</span></div>
+    <div className="map-info"><strong>{hover || 'United Kingdom'}</strong><span>{hover && choropleth && Object.hasOwn(choropleth.values, hover)
+      ? `${choropleth.label}: ${formatChoroplethValue(choropleth.values[hover], choropleth.unit)}${choropleth.unit === 'GBP/year' ? '/year' : ` ${choropleth.unit}`}${choropleth.partial.includes(hover) ? ' (partial coverage)' : ''}`
+      : hover ? owner?.name || 'Unassigned district' : `${boundaries.features.length.toLocaleString('en-GB')} postcode districts`}</span></div>
+    {choropleth && <div className="choropleth-legend" aria-label="Census map legend">
+      <strong>{choropleth.label}</strong>
+      <span className="legend-unit">Estimated {choropleth.unit === 'GBP/year' ? 'annual income (£)' : choropleth.unit}</span>
+      {choropleth.min !== null && choropleth.max !== null ? <>
+        <div className="choropleth-ramp" aria-hidden="true">{(choropleth.min === choropleth.max ? [CHOROPLETH_COLORS[2]] : CHOROPLETH_COLORS).map((color) => <span key={color} style={{ background: color }} />)}</div>
+        <div className="legend-range"><span>{formatChoroplethValue(choropleth.min, choropleth.unit)}</span>{choropleth.max !== choropleth.min && <span>{formatChoroplethValue(choropleth.max, choropleth.unit)}</span>}</div>
+        <small>{choropleth.min === choropleth.max ? 'All available values are equal' : '5 equal intervals across radius districts'}</small>
+      </> : <small>No values available in this radius</small>}
+      <div className="legend-no-data"><span style={{ background: NO_DATA_COLOR }} />No data</div>
+      {!!choropleth.partial.length && <small>Includes districts with partial data; hover for details.</small>}
+    </div>}
     <button className="reset-map" onClick={() => mapRef.current?.flyTo({ center: [-3.5, 55], zoom: 5 })}>Reset view</button>
   </section>;
 }
