@@ -103,6 +103,7 @@ export default function App() {
       <a className="skip-to-map" href="#map-workspace">Skip to map workspace</a>
       <header className="app-header landing-header">
         <a className="brand" href="#top" aria-label="territorymapmaker home">
+          <img className="brand-logo" src="/images/territorymapmakerlogo.svg" alt="" width="203" height="177" />
           territory
           <span className="brand-light">mapmaker</span>
         </a>

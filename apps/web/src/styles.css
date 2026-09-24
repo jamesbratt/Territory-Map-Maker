@@ -1,5 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
 :root {
+  --color-primary: #44cfcb;
+  --color-primary-hover: #31b9b5;
+  --color-primary-ink: #102f30;
+  --color-primary-dark: #176b68;
+  --color-primary-soft: #e8f9f8;
   font-family: "DM Sans", system-ui, sans-serif;
   color: #182b3b;
   background: #f6f8fa;
@@ -26,7 +31,7 @@ button:disabled {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-  outline: 3px solid #38bdf8;
+  outline: 3px solid var(--color-primary-dark);
   outline-offset: 3px;
 }
 button {
@@ -185,10 +190,14 @@ h2 {
 .primary {
   border: 0;
   border-radius: 7px;
-  background: #30343b;
-  color: white;
+  background: var(--color-primary);
+  color: var(--color-primary-ink);
   font-weight: 600;
   padding: 11px 16px;
+  transition: background .2s;
+}
+.primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
 }
 .create-form .primary {
   width: 100%;
@@ -210,9 +219,9 @@ h2 {
   color: #6a7d8b;
 }
 .territory-card.selected {
-  background: #f4f5f6;
-  border-color: #9ca3af;
-  box-shadow: 0 0 0 1px #9ca3af;
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 1px var(--color-primary-dark);
 }
 .swatch {
   width: 13px;
@@ -505,7 +514,7 @@ h2 {
   font: inherit;
 }
 .location-panel select:focus-visible {
-  outline: 3px solid #38bdf8;
+  outline: 3px solid var(--color-primary-dark);
   outline-offset: 3px;
 }
 .location-current {
@@ -541,7 +550,7 @@ h2 {
 }
 .visibility-toggle input {
   width: auto;
-  accent-color: #30343b;
+  accent-color: var(--color-primary-dark);
 }
 .location-actions {
   display: flex;
@@ -666,8 +675,8 @@ h2 {
   font-weight: 600;
 }
 .sidebar-tabs [aria-selected="true"] {
-  background: white;
-  color: #30343b;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
   box-shadow: 0 1px 4px #182b3b14;
 }
 .sidebar [role="tabpanel"][hidden] {
@@ -700,9 +709,6 @@ h2 {
 .radius-map-actions button {
   box-shadow: 0 2px 8px #182b3b18;
   font-size: 12px;
-}
-.radius-map-actions .primary {
-  background: #6541a5;
 }
 .radius-cancel {
   background: white;
@@ -876,7 +882,7 @@ h2 {
   font: inherit;
 }
 .census-select:focus-visible {
-  outline: 3px solid #38bdf8;
+  outline: 3px solid var(--color-primary-dark);
   outline-offset: 3px;
 }
 .age-table tbody th {

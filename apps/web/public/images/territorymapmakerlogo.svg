@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 203 177" width="203" height="177" role="img" aria-label="Postcode Heatmap folded map logo">
+  <defs>
+    <linearGradient id="leftGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#66D8D4"/>
+      <stop offset="100%" stop-color="#44CFCB"/>
+    </linearGradient>
+
+    <linearGradient id="midGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#44CFCB"/>
+      <stop offset="100%" stop-color="#33AAA6"/>
+    </linearGradient>
+
+    <linearGradient id="rightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7EDFDA"/>
+      <stop offset="100%" stop-color="#57D4D0"/>
+    </linearGradient>
+  </defs>
+
+  <polygon points="2,31 68,3 68,146 2,174" fill="url(#leftGrad)"/>
+  <polygon points="68,3 135,31 135,174 68,146" fill="url(#midGrad)"/>
+  <polygon points="135,31 201,3 201,146 135,174" fill="url(#rightGrad)"/>
+</svg>
