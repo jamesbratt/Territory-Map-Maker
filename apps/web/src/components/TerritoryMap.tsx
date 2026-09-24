@@ -7,13 +7,32 @@ import { radiusCircle, type RadiusSelection } from '../lib/radius';
 import { CHOROPLETH_COLORS, NO_DATA_COLOR, formatChoroplethValue, type CensusChoropleth } from '../lib/choropleth';
 
 type Props = { choropleth: CensusChoropleth | null; boundaries: FeatureCollection; territories: Territory[]; activeId: string | null; onToggle: (district: string) => void; locations: LocationLayer | null; locationZoom: number; radius: RadiusSelection | null; drawingRadius: boolean; onStartRadius: () => void; onCancelRadius: () => void; onRadiusCenter: (center: [number, number]) => void };
+
+const overviewOptions = { padding: { top: 110, bottom: 95, left: 45, right: 45 }, maxZoom: 12 };
+
+function overviewBounds(boundaries: FeatureCollection, territories: Territory[]): LngLatBounds {
+  const selected = new Set(territories.flatMap((territory) => territory.districts));
+  const bounds = new LngLatBounds();
+  for (const feature of boundaries.features) {
+    if (!selected.has(feature.properties?.district_code)) continue;
+    const geometry = feature.geometry;
+    const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+      : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+    for (const polygon of polygons) for (const ring of polygon) for (const point of ring) {
+      bounds.extend(point as [number, number]);
+    }
+  }
+  // Include England and Wales, including the Isles of Scilly, for empty territories.
+  return bounds.isEmpty() ? new LngLatBounds([-6.5, 49.8], [1.9, 55.9]) : bounds;
+}
+
 export function TerritoryMap({ boundaries, territories, activeId, onToggle, locations, locationZoom, radius, drawingRadius, onStartRadius, onCancelRadius, onRadiusCenter, choropleth }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const popup = useRef<Popup | null>(null);
   const lastZoom = useRef(0);
-  const latest = useRef({ activeId, onToggle, drawingRadius, onRadiusCenter });
-  latest.current = { activeId, onToggle, drawingRadius, onRadiusCenter };
+  const latest = useRef({ activeId, onToggle, drawingRadius, onRadiusCenter, territories });
+  latest.current = { activeId, onToggle, drawingRadius, onRadiusCenter, territories };
   const [loaded, setLoaded] = useState(false);
   const [hover, setHover] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -21,18 +40,22 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
     if (!container.current) return;
     let map: Map;
     try {
-      map = new Map({ container: container.current, center: [-3.5, 55], zoom: 5, minZoom: 3, cooperativeGestures: true,
+      map = new Map({ container: container.current, bounds: overviewBounds(boundaries, latest.current.territories), fitBoundsOptions: overviewOptions, minZoom: 3, cooperativeGestures: true,
         style: { version: 8, sources: { basemap: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' } }, layers: [{ id: 'basemap', type: 'raster', source: 'basemap', paint: { 'raster-saturation': -0.8, 'raster-opacity': 0.65 } }] } });
     } catch { setError('The map could not start. Check that WebGL is enabled in your browser.'); return; }
     mapRef.current = map;
     map.addControl(new NavigationControl(), 'top-left');
     map.on('error', () => setError('Some map content could not load. Check your connection and reload to retry.'));
     map.on('load', () => {
-      map.addSource('districts', { type: 'geojson', data: boundaries });
+      map.addSource('districts', { type: 'geojson', data: boundaries, promoteId: 'district_code' });
       map.addLayer({ id: 'district-fill', type: 'fill', source: 'districts', paint: { 'fill-color': '#94a3b8', 'fill-opacity': 0.15 } });
       map.addLayer({ id: 'census-fill', type: 'fill', source: 'districts', filter: ['in', ['get', 'district_code'], ['literal', []]], paint: { 'fill-color': NO_DATA_COLOR, 'fill-opacity': 0.92 } });
       map.addLayer({ id: 'district-line', type: 'line', source: 'districts', paint: { 'line-color': '#64748b', 'line-width': 0.7, 'line-opacity': 0.65 } });
-      map.addLayer({ id: 'district-hover', type: 'line', source: 'districts', filter: ['==', ['get', 'district_code'], ''], paint: { 'line-color': '#0f172a', 'line-width': 2 } });
+      map.addLayer({ id: 'district-hover', type: 'line', source: 'districts', paint: {
+        'line-color': '#0f172a', 'line-width': 2,
+        'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0],
+        'line-opacity-transition': { duration: 0, delay: 0 },
+      } });
       map.addLayer({ id: 'radius-districts', type: 'line', source: 'districts', filter: ['in', ['get', 'district_code'], ['literal', []]], paint: { 'line-color': '#7c3aed', 'line-width': 2 } });
       map.addSource('radius', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.addLayer({ id: 'radius-fill', type: 'fill', source: 'radius', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#7c3aed', 'fill-opacity': 0.12 } });
@@ -66,14 +89,22 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
     });
     map.on('mouseenter', 'location-markers', () => { map.getCanvas().style.cursor = 'pointer'; });
     map.on('mouseleave', 'location-markers', () => { map.getCanvas().style.cursor = ''; });
-    map.on('mousemove', 'district-fill', (event) => {
-      const code = String(event.features?.[0]?.properties.district_code ?? '');
+    let hoveredDistrict: string | null = null;
+    const updateHover = (code: string | null) => {
+      if (code === hoveredDistrict) return;
+      // Feature state updates paint without rebuilding the district layer's filter.
+      if (hoveredDistrict !== null) map.setFeatureState({ source: 'districts', id: hoveredDistrict }, { hover: false });
+      if (code !== null) map.setFeatureState({ source: 'districts', id: code }, { hover: true });
+      hoveredDistrict = code;
       setHover(code);
-      map.setFilter('district-hover', ['==', ['get', 'district_code'], code]);
+    };
+    map.on('mousemove', 'district-fill', (event) => {
+      const code = event.features?.[0]?.properties.district_code;
+      updateHover(code == null ? null : String(code));
       const overLocation = map.queryRenderedFeatures(event.point, { layers: ['location-markers'] }).length > 0;
       map.getCanvas().style.cursor = latest.current.activeId || overLocation ? 'pointer' : 'grab';
     });
-    map.on('mouseleave', 'district-fill', () => { setHover(null); map.setFilter('district-hover', ['==', ['get', 'district_code'], '']); map.getCanvas().style.cursor = ''; });
+    map.on('mouseleave', 'district-fill', () => { updateHover(null); map.getCanvas().style.cursor = ''; });
     const resize = new ResizeObserver(() => map.resize()); resize.observe(container.current);
     return () => { resize.disconnect(); popup.current?.remove(); map.remove(); mapRef.current = null; setLoaded(false); };
   }, [boundaries]);
@@ -167,6 +198,6 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
       <div className="legend-no-data"><span style={{ background: NO_DATA_COLOR }} />No data</div>
       {!!choropleth.partial.length && <small>Includes districts with partial data; hover for details.</small>}
     </div>}
-    <button className="reset-map" onClick={() => mapRef.current?.flyTo({ center: [-3.5, 55], zoom: 5 })}>Reset view</button>
+    <button className="reset-map" onClick={() => mapRef.current?.fitBounds(overviewBounds(boundaries, territories), overviewOptions)}>Reset view</button>
   </section>;
 }

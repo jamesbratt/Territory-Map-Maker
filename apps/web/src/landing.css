@@ -38,11 +38,8 @@
 .workspace-toolbar > span { display: flex; gap: 9px; align-items: center; font-size: 12px; font-weight: 600; color: #4b5563; }
 .workspace-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-primary); }
 .landing-page .workspace { height: clamp(650px, 80dvh, 850px); flex: none; }
-.landing-page .workspace .sidebar { min-height: 0; overscroll-behavior-y: contain; }
+.landing-page .workspace .sidebar { min-height: 0; }
 .workspace-page-note { margin: 18px 24px 0; font-size: 11px; color: #6b7280; text-align: center; }
-.use-cases-section { background: #ffffff; }
-.use-case-card { background: #ffffff; padding-top: 34px; border-color: #e5e7eb; }
-.use-case-card .card-tag { margin-bottom: 24px; }
 .landing-footer { display: flex; justify-content: space-between; align-items: center; gap: 30px; padding-block: 36px; border-top: 1px solid #e5e7eb; }
 .landing-footer .brand { font-size: 19px; }
 .landing-footer .brand-icon { width: 29px; height: 29px; font-size: 24px; }
@@ -52,7 +49,7 @@
 .footer-note { font-size: 10px; color: #6b7280; }
 .skip-to-map { position: absolute; top: -100px; left: 20px; padding: 12px; background: #fff; color: #25282d; z-index: 100; }
 .skip-to-map:focus { top: 12px; }
-#features, #use-cases { scroll-margin-top: 24px; }
+#features { scroll-margin-top: 24px; }
 @media (max-width: 1000px) {
   .landing-container { width: calc(100% - 48px); }
   .landing-header.app-header { padding-inline: 24px; }

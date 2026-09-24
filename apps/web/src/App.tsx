@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FeatureCollection } from "geojson";
 import { getBoundaries } from "./lib/api";
+import { trackEvent } from "./lib/analytics";
 import {
   parseTerritories,
   STORAGE_KEY,
@@ -19,7 +20,7 @@ import {
 import { districtsInRadius, type RadiusSelection } from "./lib/radius";
 import { RadiusResults } from "./components/RadiusResults";
 import type { CensusChoropleth } from "./lib/choropleth";
-import { LandingHero, LandingFeatures, LandingUseCases, LandingFooter } from "./components/LandingSections";
+import { LandingHero, LandingFeatures, LandingFooter } from "./components/LandingSections";
 import "./landing.css";
 
 export default function App() {
@@ -107,7 +108,6 @@ export default function App() {
           territory
           <span className="brand-light">mapmaker</span>
         </a>
-        <nav className="landing-nav" aria-label="Main navigation"><a href="#features">Features</a><a href="#use-cases">Use cases</a><a className="landing-button" href="#map-workspace">Open the map <span aria-hidden="true">↗</span></a></nav>
       </header>
       <main>
       <LandingHero />
@@ -130,11 +130,13 @@ export default function App() {
             onStartRadius={startRadius}
             onCancelRadius={() => setDrawingRadius(false)}
             onRadiusCenter={(center) => {
+              const districts = districtsInRadius(districtIndex, center);
               setRadius({
                 center,
-                districts: districtsInRadius(districtIndex, center),
+                districts,
               });
               setDrawingRadius(false);
+              trackEvent(radius ? 'radius_moved' : 'radius_added', { radius_km: 10, district_count: districts.length });
             }}
             locations={locations}
             locationZoom={locationZoom}
@@ -194,6 +196,7 @@ export default function App() {
               const id = crypto.randomUUID();
               update([...territories, { id, name, color, districts: [] }]);
               setActiveId(id);
+              trackEvent('territory_created', { territory_count: territories.length + 1 });
             }}
             onUpdate={(territory) =>
               update(
@@ -220,7 +223,6 @@ export default function App() {
         </div>
         <p className="workspace-page-note">Territories are saved in this browser. Uploaded locations stay until you refresh. Census figures are estimates.</p>
       </section>
-      <LandingUseCases />
       </main>
       <LandingFooter />
     </div>

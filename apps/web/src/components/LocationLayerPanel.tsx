@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { uploadLocations } from '../lib/api';
+import { trackEvent } from '../lib/analytics';
 import { isMappedLocation, readCsvHeaders, type LocationLayer } from '../lib/locations';
 
 type Props = { layer: LocationLayer | null; onChange: (layer: LocationLayer | null) => void; onZoom: () => void; mapReady: boolean };
@@ -51,6 +52,14 @@ export function LocationLayerPanel({ layer, onChange, onZoom, mapReady }: Props)
         const result = await uploadLocations(file, postcode, controller.signal);
         if (controller.signal.aborted) return;
         onChange({ name: file.name, ...result, visible: true });
+        const mappedCount = result.rows.filter(isMappedLocation).length;
+        trackEvent('sales_uploaded', {
+          row_count: result.rows.length,
+          mapped_count: mappedCount,
+          unmatched_count: result.rows.length - mappedCount,
+          skipped_count: result.skipped,
+          replaces_existing: layer !== null,
+        });
         setFile(null); setHeaders([]); setPostcode('');
         if (input.current) input.current.value = '';
       } catch (reason) { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Upload failed. Please try again.'); }

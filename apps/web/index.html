@@ -1,6 +1,24 @@
 <!doctype html>
 <html lang="en-GB">
   <head>
+    <!-- Google tag (gtag.js): exclude local development traffic. -->
+    <script>
+      (function () {
+        var hostname = window.location.hostname.toLowerCase().replace(/\.$/, '');
+        if (hostname === 'localhost' || hostname.endsWith('.localhost') ||
+            /^127\./.test(hostname) || hostname === '[::1]' || hostname === '::1') return;
+
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', 'G-28RV93HKL3');
+
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=G-28RV93HKL3';
+        document.head.appendChild(script);
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#44CFCB" />
