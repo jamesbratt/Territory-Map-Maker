@@ -4,7 +4,7 @@ const { resolve } = require('node:path');
 process.chdir(resolve(__dirname, '..'));
 require('dotenv').config({ path: resolve(__dirname, '../../../.env') });
 for (const [key, value] of Object.entries({ DB_HOST: 'localhost', DB_PORT: '5432', DB_USERNAME: 'test', DB_PASSWORD: 'test', DB_NAME: 'test' })) process.env[key] ??= value;
-const { validateDistricts, getDistrictAgePopulation } = require('../dist/services/district-demographics.service');
+const { validateDistricts, getDistrictAgePopulation, DISTRICT_AGE_SQL } = require('../dist/services/district-demographics.service');
 const { AppDataSource } = require('../dist/database/data-source');
 const { app } = require('../dist/app');
 
@@ -54,6 +54,19 @@ test('PostgreSQL aggregation deduplicates LSOAs, isolates district prefixes and 
         ('A',2021,999,1,1,1,1,1,1,1,1),('A',2022,100,10,10,20,20,10,10,10,10),
         ('A',2022,100,10,10,20,20,10,10,10,10),('B',2022,200,20,20,40,40,20,20,20,20),
         ('Z',2022,0,0,0,0,0,0,0,0,0),('OLD',2021,500,50,50,100,100,50,50,50,50);`);
+    await client.query(`INSERT INTO postcodelookup VALUES
+      ('AB1 1AA',' A '),('AB1 1AA',''),('AB1BAD','A'),('', 'A'),('X','A'),
+      ('AB2 1AA',' A '),('AB1 1AC',NULL);`);
+    const { IndexDistrictLookup1785800000000 } = require('../dist/database/migrations/1785800000000-IndexDistrictLookup');
+    await new IndexDistrictLookup1785800000000().up(client);
+    // A tiny fixture normally favours sequential scans. Check that both selective
+    // lookup predicates can use the migration's expression indexes.
+    await client.query('SET LOCAL enable_seqscan = off');
+    const plan = await client.query(`EXPLAIN (FORMAT JSON) ${DISTRICT_AGE_SQL}`, [['AB1']]);
+    const planText = JSON.stringify(plan.rows);
+    assert.ok(planText.includes('IDX_POSTCODE_DISTRICT_NORMALIZED'));
+    assert.ok(planText.includes('IDX_POSTCODE_LSOA_NORMALIZED'));
+    await client.query('SET LOCAL enable_seqscan = on');
     AppDataSource.query = async (sql, parameters) => (await client.query(sql, parameters)).rows;
     const { districts } = await getDistrictAgePopulation(['AB1','AB10','AB2','AB3','AB4','AB5','ZZ9']);
     const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} should equal ${expected}`);

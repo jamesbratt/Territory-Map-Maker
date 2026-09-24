@@ -1,3 +1,4 @@
+import { districtLinksSql } from './district-links.sql';
 import { AppDataSource } from '../database/data-source';
 import { CENSUS_VARIABLES } from './census.config';
 import { DistrictInputError, getDistrictAgePopulation } from './district-demographics.service';
@@ -68,20 +69,7 @@ export async function getDistrictSignal(districts: string[], requestedSignal: un
     SELECT district, ordinal FROM unnest($1::text[]) WITH ORDINALITY AS r(district, ordinal)
   ), latest AS (
     SELECT ${income ? 'NULL::int' : 'MAX(date)'} AS year ${income ? '' : `FROM ${table}`}
-  ), normalized AS (
-    SELECT regexp_replace(upper(pcd7), '[[:space:]]', '', 'g') AS postcode,
-      NULLIF(trim(${areaColumn}), '') AS area FROM postcodelookup
-  ), unique_postcodes AS (
-    SELECT DISTINCT postcode, area, left(postcode, length(postcode) - 3) AS district
-    FROM normalized WHERE area IS NOT NULL AND length(postcode) >= 5
-      AND postcode ~ '^[A-Z]{1,2}[0-9][0-9A-Z]?[0-9][A-Z]{2}$|^GIR0AA$'
-  ), district_postcodes AS (
-    SELECT district, area, COUNT(*) AS postcode_count FROM unique_postcodes GROUP BY district, area
-  ), all_weights AS (
-    SELECT *, postcode_count::numeric / SUM(postcode_count) OVER (PARTITION BY area) AS weight FROM district_postcodes
-  ), links AS (
-    SELECT w.* FROM all_weights w JOIN requested r ON r.district = w.district
-  ), observations AS (
+  ), ${districtLinksSql(areaColumn, !income)}, observations AS (
     SELECT DISTINCT ON (p.${geographyColumn}) p.* FROM ${table} p
     WHERE p.${geographyColumn} IN (SELECT area FROM links)
       ${income ? '' : 'AND p.date = (SELECT year FROM latest)'}

@@ -143,6 +143,16 @@ Set `TEST_DEMOGRAPHICS_DB=1` to include the PostgreSQL aggregation test using yo
 configured database. It uses temporary tables inside a rolled-back transaction;
 existing application tables and data are not changed.
 
+District demographics queries require the `IndexDistrictLookup1785800000000`
+migration for efficient postcode lookups. Build the API with
+`npm run build --workspace @segment/api`, then run `npm run migration:run` before
+deploying the updated API. The migration creates expression indexes for normalized
+districts and LSOAs and refreshes planner statistics. Index creation scans the
+lookup table and blocks writes while it runs; schedule it around postcode imports.
+Queries select requested districts first and count all postcodes only in linked
+LSOAs, preserving weights across district boundaries. Income queries need only
+the selected districts' postcode counts. No cache refresh is required after imports.
+
 ## Commands
 
 - `npm run dev` — run every workspace in development mode

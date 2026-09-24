@@ -1,3 +1,4 @@
+import { districtLinksSql } from './district-links.sql';
 import { AppDataSource } from '../database/data-source';
 
 export class DistrictInputError extends Error {}
@@ -28,40 +29,22 @@ WITH requested AS (
   SELECT district, ordinal FROM unnest($1::text[]) WITH ORDINALITY AS r(district, ordinal)
 ), latest AS (
   SELECT MAX(date) AS year FROM population_by_age_band
-), normalized AS (
-  SELECT regexp_replace(upper(pcd7), '[[:space:]]', '', 'g') AS postcode,
-         NULLIF(trim(lsoa21cd), '') AS lsoa
-  FROM postcodelookup
-), unique_postcodes AS (
-  SELECT DISTINCT n.postcode, n.lsoa, left(n.postcode, length(n.postcode) - 3) AS district
-  FROM normalized n
-  WHERE n.lsoa IS NOT NULL AND length(n.postcode) >= 5
-    AND n.postcode ~ '^[A-Z]{1,2}[0-9][0-9A-Z]?[0-9][A-Z]{2}$|^GIR0AA$'
-), district_postcodes AS (
-  SELECT district, lsoa, COUNT(*) AS postcode_count
-  FROM unique_postcodes GROUP BY district, lsoa
-), all_weights AS (
-  SELECT district, lsoa,
-    postcode_count::numeric / SUM(postcode_count) OVER (PARTITION BY lsoa) AS weight
-  FROM district_postcodes
-), links AS (
-  SELECT w.* FROM all_weights w JOIN requested r ON r.district = w.district
-), ages AS (
+), ${districtLinksSql('lsoa21cd')}, ages AS (
   SELECT DISTINCT ON (p.geography_code) p.*
   FROM population_by_age_band p
   WHERE p.date = (SELECT year FROM latest)
-    AND p.geography_code IN (SELECT lsoa FROM links)
+    AND p.geography_code IN (SELECT area FROM links)
   ORDER BY p.geography_code, p.updated_at DESC, p.id DESC
 )
 SELECT r.district, (SELECT year FROM latest) AS year,
-  COUNT(l.lsoa)::int AS "linkedLsoaCount", COUNT(a.geography_code)::int AS "matchedLsoaCount",
+  COUNT(l.area)::int AS "linkedLsoaCount", COUNT(a.geography_code)::int AS "matchedLsoaCount",
   SUM(a.total * l.weight) AS population,
   SUM(a.under_18 * l.weight) AS "under18", SUM(a.age_18_24 * l.weight) AS "age1824",
   SUM(a.age_25_34 * l.weight) AS "age2534", SUM(a.age_35_44 * l.weight) AS "age3544",
   SUM(a.age_45_54 * l.weight) AS "age4554", SUM(a.age_55_64 * l.weight) AS "age5564",
   SUM(a.age_65_74 * l.weight) AS "age6574", SUM(a.age_75_plus * l.weight) AS "age75Plus"
 FROM requested r LEFT JOIN links l ON l.district = r.district
-LEFT JOIN ages a ON a.geography_code = l.lsoa
+LEFT JOIN ages a ON a.geography_code = l.area
 GROUP BY r.district, r.ordinal ORDER BY r.ordinal`;
 
 type RawRow = { district: string; year: number | null; linkedLsoaCount: number; matchedLsoaCount: number; population: string | null } & Record<typeof AGE_BANDS[number]['key'], string | null>;
