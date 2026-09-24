@@ -86,10 +86,24 @@ export function TerritoryMap({ boundaries, territories, activeId, onToggle, loca
     void (map.getSource('radius') as GeoJSONSource).setData(data).catch(() => setError('The radius could not be displayed. Please try again.'));
     map.setFilter('radius-districts', ['in', ['get', 'district_code'], ['literal', radius?.districts ?? []]]);
     if (circle) {
-      const bounds = circle.geometry.coordinates[0].reduce((bounds, point) => bounds.extend(point as [number, number]), new LngLatBounds());
+      const bounds = new LngLatBounds();
+      const selected = new Set(radius?.districts);
+      for (const feature of boundaries.features) {
+        if (!selected.has(feature.properties?.district_code)) continue;
+        const geometry = feature.geometry;
+        const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+          : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+        for (const polygon of polygons) for (const ring of polygon) for (const point of ring) {
+          bounds.extend(point as [number, number]);
+        }
+      }
+      // Keep empty selections visible when the radius is outside district coverage.
+      if (bounds.isEmpty()) {
+        for (const point of circle.geometry.coordinates[0]) bounds.extend(point as [number, number]);
+      }
       map.fitBounds(bounds, { padding: { top: 110, bottom: 95, left: 45, right: 45 }, maxZoom: 12 });
     }
-  }, [radius, loaded]);
+  }, [radius, loaded, boundaries]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded) return;
